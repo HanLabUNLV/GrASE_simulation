@@ -1,0 +1,3 @@
+ls $HOME/Love_simulation/STAR/group1/bam/*.Aligned.sortedByCoord.out.bam | parallel -j 20 bash dexseq_count.sh group1 {} 
+ls $HOME/Love_simulation/STAR/group2/bam/*.Aligned.sortedByCoord.out.bam | parallel -j 20 bash dexseq_count.sh group2 {} 
+

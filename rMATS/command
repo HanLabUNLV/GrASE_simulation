@@ -1,0 +1,6 @@
+
+bash 01_rmats_prep.sh group1 &> group1.prep.log
+bash 01_rmats_prep.sh group2 &> group2.prep.log
+
+bash 02_rmats_post.sh group1 group2 &> post.log
+

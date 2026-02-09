@@ -1,0 +1,6 @@
+Rscript saturn.R \
+  --gff ../ref/gencode.v28.dexseq.bygene.gff \
+  --cntdir ../DEXSeq/count_files \
+  --outdir saturn_group1_group2 \
+  --cell1 group1 \
+  --cell2 group2 
