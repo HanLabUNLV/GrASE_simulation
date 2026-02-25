@@ -1,3 +1,4 @@
+conda activate rmats.4.2.0
 
 bash 01_rmats_prep.sh group1 &> group1.prep.log
 bash 01_rmats_prep.sh group2 &> group2.prep.log
