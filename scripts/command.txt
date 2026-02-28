@@ -3,7 +3,7 @@ Rscript ~/GrASE/Rpkg/scripts/map_rmats_graph.R ~/GrASE_simulation/graphml ~/GrAS
 
 Rscript ~/GrASE/scripts/infer_diff_exons_gt.R ~/GrASE_simulation/dexseq.gff/ ~/GrASE_simulation/swimdown/simulate/data/simulate.rda ~/GrASE_simulation/results/sim_exon_info
 
-Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_bipartition_test.R \
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
   "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_fixedEB.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_fixedEB.annotated.txt" \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_fixedEB \
@@ -11,13 +11,18 @@ Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_bipartition_test.R \
   2>&1 | tee /tmp/eval_bipartition.log
 
 
-Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_bipartition_test.R \
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
   "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_prior.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_prior.annotated.txt" \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_prior \
   /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda \
   2>&1 | tee /tmp/eval_bipartition.log
 
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_multinomial_test.R \
+    ~/GrASE_simulation/multinomial.dm/test_multinomial.internal_multinomial_dm_EB.annotated.txt \
+    ~/GrASE_simulation/results/sim_exon_info \
+    ~/GrASE_simulation/results/eval_multinomial_dm \
+    ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
 Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_tools_vs_gt.R \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \

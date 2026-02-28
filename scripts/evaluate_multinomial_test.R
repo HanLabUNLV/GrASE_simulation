@@ -1,22 +1,22 @@
 #!/usr/bin/env Rscript
 
-# scripts/evaluate_bipartition_test.R
+# scripts/evaluate_multinomial_test.R
 #
-# Evaluates GrASE bipartition statistical test results against simulation
+# Evaluates GrASE multinomial statistical test results against simulation
 # ground truth.
 #
 # Input test results file columns (tab-separated):
-#   gene, event, LRT, p.value, model, phi, effect_size, padj,
-#   source, sink, ref_ex_part, setdiff1, setdiff2,
-#   transcripts1, transcripts2, path1, path2,
-#   ref_mean, diff1_mean, diff2_mean, diff_mean, which, setdiff
+#   gene, event, LRT, p.value, model, effect_size, padj,
+#   source, sink, ref_ex_part,
+#   setdiff1, transcripts1, path1, ..., setdiff20, transcripts20, path20,
+#   setdiff1_mean, ..., setdiff7_mean
 #
 # Ground truth (gt_dir, from infer_diff_exons_gt.R):
 #   gene.exonic_parts_fc.txt   exonic_part, fold_change, group, transcripts,
 #                               changed_tx, alt_tx, source, sink
 #
 # Exonic part detection:
-#   Detected positive = exonic parts in `setdiff` column with padj < threshold
+#   Detected positive = exonic parts in setdiffN columns of events with padj < threshold
 #   GT positive       = exonic parts labelled "changed"
 #   GT negative       = exonic parts labelled "negative"
 #   Reports TP/FP/FN/TN, precision, recall, F1 at multiple padj thresholds
@@ -26,17 +26,17 @@
 #     Restricted           : universe = only GrASE-testable exons (setdiff)
 #
 # Usage:
-#   Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>
+#   Rscript evaluate_multinomial_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>
 #
 #   <test_results> may be a single file path or a comma-separated list of paths.
-#   When multiple files are given they are combined: the minimum
-#   padj across files is used per (gene, setdiff).
+#   When multiple files are given they are combined row-wise and the minimum
+#   padj is taken per (gene, event).
 #
 # Outputs:
-#   grase_per_gene_padj<thr>.txt                  per-gene metrics (full GT)
-#   grase_restricted_per_gene_padj<thr>.txt       per-gene metrics (restricted)
-#   grase_summary_by_simtype.txt                  P/R/F1 by sim_type (full GT)
-#   grase_restricted_summary_by_simtype.txt       same, restricted
+#   grase_per_gene_padj<thr>.txt              per-gene metrics (full GT)
+#   grase_restricted_per_gene_padj<thr>.txt   per-gene metrics (restricted)
+#   grase_summary_by_simtype.txt              P/R/F1 by sim_type (full GT)
+#   grase_restricted_summary_by_simtype.txt   same, restricted
 
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(parallel))
@@ -44,7 +44,7 @@ n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  cat("Usage: Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
+  cat("Usage: Rscript evaluate_multinomial_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
   quit(save = "no", status = 1)
 }
 
@@ -57,7 +57,7 @@ padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
-#  helpers 
+#  helpers
 
 parse_exparts <- function(x) {
   if (is.na(x) || trimws(x) == "" || x == "NA") return(character(0))
@@ -69,7 +69,21 @@ f1_safe <- function(p, r) {
   else 2 * p * r / (p + r)
 }
 
-#  load test results 
+# Combine all setdiffN columns (N = 1..20) per row into a single comma-separated
+# string, excluding NA and "no_exon_part" values.
+combine_setdiffs <- function(df) {
+  setdiff_cols <- grep("^setdiff\\d+$", names(df), value = TRUE)
+  if (length(setdiff_cols) == 0) {
+    stop("No setdiffN columns found in test results file.")
+  }
+  apply(df[, setdiff_cols, drop = FALSE], 1, function(row) {
+    vals <- row[!is.na(row) & row != "no_exon_part" & nchar(trimws(row)) > 0]
+    if (length(vals) == 0) NA_character_
+    else paste(unique(trimws(unlist(strsplit(vals, ",")))), collapse = ",")
+  })
+}
+
+#  load test results
 
 cat(sprintf("loading %d test file(s)...\n", length(test_files)))
 tests_list <- lapply(test_files, function(f) {
@@ -82,25 +96,29 @@ tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
-# when multiple files are combined, take the minimum padj per (gene, setdiff)
+# Build a single 'setdiff' column = union of all non-NA, non-"no_exon_part" setdiffN values
+tests$setdiff <- combine_setdiffs(tests)
+
+# When multiple files are combined, keep the row with minimum padj per (gene, event)
 if (length(test_files) > 1) {
-  tests_eval <- tests %>%
-    group_by(gene, setdiff) %>%
-    summarise(padj = min(padj, na.rm = TRUE), .groups = "drop")
-} else {
-  tests_eval <- tests %>% select(gene, setdiff, padj)
+  tests <- tests %>%
+    group_by(gene, event) %>%
+    slice_min(padj, n = 1, with_ties = FALSE) %>%
+    ungroup()
 }
 
-# build per-gene set of exonic parts grase explicitly tested (setdiff only)
-# setdiff may be a comma-separated list of exonic parts; split before deduplicating
+tests_eval <- tests[, c("gene", "event", "setdiff", "padj")]
+
+# Build per-gene set of exonic parts GrASE explicitly tested (all events,
+# regardless of significance)
 grase_testable_by_gene <- lapply(
   split(tests_eval$setdiff, tests_eval$gene),
   function(x) unique(unlist(lapply(x[!is.na(x) & nchar(x) > 0], parse_exparts)))
 )
-cat(sprintf("  grase: %d genes with testable exonic parts (setdiff only)\n",
+cat(sprintf("  grase: %d genes with testable exonic parts\n",
             length(grase_testable_by_gene)))
 
-#  load simulation gene type labels 
+#  load simulation gene type labels
 
 cat("loading simulate.rda...\n")
 dge_genes <- dte_genes <- dtu_genes <- character(0)
@@ -122,7 +140,7 @@ get_sim_type <- function(gene) {
   return("Background")
 }
 
-#  load ground truth 
+#  load ground truth
 
 cat("loading ground truth exonic_parts_fc files...\n")
 gt_fc_files <- list.files(gt_dir, pattern = "\\.exonic_parts_fc\\.txt$",
@@ -131,7 +149,7 @@ gt_genes_available <- sub("\\.exonic_parts_fc\\.txt$", "",
                           basename(gt_fc_files))
 
 test_genes <- unique(tests$gene)
-eval_genes <- gt_genes_available   # all gt genes (total-space universe)
+eval_genes <- gt_genes_available
 cat(sprintf("  gt genes: %d  |  test genes: %d  |  gt-only (untested): %d\n",
             length(gt_genes_available), length(test_genes),
             length(setdiff(gt_genes_available, test_genes))))
@@ -150,11 +168,9 @@ cat(sprintf("  loaded %d exonic part records across %d genes\n",
             nrow(gt_all), length(unique(gt_all$gene))))
 
 gt_all$sim_type <- sapply(gt_all$gene, get_sim_type)
-
-# pre-split gt_all by gene for o(1) lookup 
 gt_by_gene <- split(gt_all, gt_all$gene)
 
-# exonic part detection 
+#  exonic part detection
 
 cat("\nRunning exonic part detection...\n")
 
@@ -180,7 +196,7 @@ add_all_row <- function(summary_df) {
 }
 
 eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRUE,
-                       gt_col = "group") {
+                              gt_col = "group") {
   cat(sprintf("  [%s]\n", label))
   all_thresholds <- list()
 
@@ -198,10 +214,8 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
       if (!is.null(testable_by_gene) &&
           (is.null(testable) || length(testable) == 0)) return(NULL)
 
-      # Use gt_col if present; fall back to "group" for old GT files
-      col <- if (gt_col %in% names(gt_gene)) gt_col else "group"
-      gt_pos <- unique(gt_gene$exonic_part[
-        gt_gene[[col]] == "changed"])
+      col    <- if (gt_col %in% names(gt_gene)) gt_col else "group"
+      gt_pos <- unique(gt_gene$exonic_part[gt_gene[[col]] == "changed"])
       gt_neg <- unique(gt_gene$exonic_part[gt_gene[[col]] == "negative"])
       if (!is.null(testable)) {
         if (restrict_pos) gt_pos <- intersect(gt_pos, testable)
@@ -234,13 +248,12 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
         stringsAsFactors = FALSE
       )
     })
-    grase_df <- bind_rows(rows[!sapply(rows, is.null)])
 
+    grase_df <- bind_rows(rows[!sapply(rows, is.null)])
     all_thresholds[[as.character(thr)]] <- grase_df
 
     write.table(grase_df,
-                file.path(out_dir, sprintf("%s_per_gene_padj%.2f.txt",
-                                          label, thr)),
+                file.path(out_dir, sprintf("%s_per_gene_padj%.2f.txt", label, thr)),
                 sep = "\t", quote = FALSE, row.names = FALSE)
   }
 
@@ -281,9 +294,8 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
 eval_full  <- eval_exonic_parts("grase")
 # Coverage-restricted: universe = GrASE-testable exons (setdiff only)
 eval_restr <- eval_exonic_parts("grase_restricted",
-                        testable_by_gene = grase_testable_by_gene,
-                        restrict_pos = TRUE)
-
+                                testable_by_gene = grase_testable_by_gene,
+                                restrict_pos = TRUE)
 
 cat("\n=== Summary (full GT, micro metrics) ===\n")
 print(as.data.frame(eval_full$summary %>%

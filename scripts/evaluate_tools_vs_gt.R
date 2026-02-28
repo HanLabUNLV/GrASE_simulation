@@ -20,7 +20,7 @@
 #
 # Ground truth (gt_dir, from infer_diff_exons_simulation.R):
 #   gene.exonic_parts_fc.txt   columns: gene, exonic_part, group
-#                                       group in {changed, constant, negative}
+#                                       group in {changed, negative}
 #
 # Usage:
 #   Rscript evaluate_tools_vs_gt.R \
@@ -74,7 +74,7 @@ f1_safe <- function(p, r) {
 #                gap). Full eval passes no testable at all (universe = all GT).
 expart_metrics <- function(det_exparts, gt_gene_df,
                            testable = NULL, restrict_pos = TRUE) {
-  gt_pos <- unique(gt_gene_df$exonic_part[gt_gene_df$group %in% c("changed", "constant")])
+  gt_pos <- unique(gt_gene_df$exonic_part[gt_gene_df$group == "changed"])
   gt_neg <- unique(gt_gene_df$exonic_part[gt_gene_df$group == "negative"])
   if (!is.null(testable)) {
     if (restrict_pos) gt_pos <- intersect(gt_pos, testable)
