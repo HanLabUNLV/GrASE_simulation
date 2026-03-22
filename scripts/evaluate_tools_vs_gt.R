@@ -327,7 +327,9 @@ evaluate_tool <- function(tool_by_gene, tool_name,
 
       testable <- if (!is.null(testable_by_gene)) testable_by_gene[[gene]] else NULL
       # Skip genes where the tool has no testable exonic parts
-      if (!is.null(testable) && length(testable) == 0) return(NULL)
+      # (also skips genes absent from testable_by_gene, where testable is NULL)
+      if (!is.null(testable_by_gene) &&
+          (is.null(testable) || length(testable) == 0)) return(NULL)
 
       tool_gene <- tool_by_gene[[gene]]
       if (!is.null(tool_gene)) {

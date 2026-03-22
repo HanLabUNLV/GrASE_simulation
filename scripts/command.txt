@@ -1,28 +1,204 @@
 
-Rscript ~/GrASE/Rpkg/scripts/map_rmats_graph.R ~/GrASE_simulation/graphml ~/GrASE_simulation/rMATS/rmats_post_group1_group2/ ~/GrASE_simulation/map_rmats
+# ============================================================
+# preprocessing (commented out -- already run)
+# ============================================================
 
-Rscript ~/GrASE/scripts/infer_diff_exons_gt.R ~/GrASE_simulation/dexseq.gff/ ~/GrASE_simulation/swimdown/simulate/data/simulate.rda ~/GrASE_simulation/results/sim_exon_info
+# map rMATS events to splicing graph nodes
+#Rscript ~/GrASE/Rpkg/scripts/map_rmats_graph.R ~/GrASE_simulation/graphml ~/GrASE_simulation/rMATS/rmats_post_group1_group2/ ~/GrASE_simulation/map_rmats
 
+# build ground truth exonic part labels from simulate.rda + DEXSeq GFF
+#Rscript ~/GrASE/scripts/infer_diff_exons_gt.R ~/GrASE_simulation/dexseq.gff/ ~/GrASE_simulation/swimdown/simulate/data/simulate.rda ~/GrASE_simulation/results/sim_exon_info
+
+# ============================================================
+# bipartition
+# ============================================================
+
+# fixedEB
 Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
   "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_fixedEB.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_fixedEB.annotated.txt" \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_fixedEB \
-  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda \
-  2>&1 | tee /tmp/eval_bipartition.log
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
+# fixedEB mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_fixedEB.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_fixedEB.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_fixedEB_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
+# fixedEB fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_fixedEB.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_fixedEB.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_fixedEB_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# prior
 Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
   "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_prior.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_prior.annotated.txt" \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_prior \
-  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda \
-  2>&1 | tee /tmp/eval_bipartition.log
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
+# prior mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_prior.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_prior.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_prior_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# prior fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_prior.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_prior.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_prior_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_no_prior.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_no_prior.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_no_prior \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_no_prior.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_no_prior.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_no_prior_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_no_prior.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_no_prior.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_no_prior_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_wilcoxon.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_wilcoxon.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_wilcoxon \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_wilcoxon.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_wilcoxon.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_wilcoxon_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_wilcoxon.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_wilcoxon.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_wilcoxon_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# ============================================================
+# n_choose_2
+# ============================================================
+
+# fixedEB
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_fixedEB.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_fixedEB.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_fixedEB \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# fixedEB mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_fixedEB.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_fixedEB.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_fixedEB_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# fixedEB fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_fixedEB.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_fixedEB.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_fixedEB_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# prior
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_prior.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_prior.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_prior \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# prior mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_prior.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_prior.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_prior_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# prior fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_prior.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_prior.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_prior_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_no_prior.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_no_prior.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_no_prior \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_no_prior.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_no_prior.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_no_prior_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# no_prior fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_glmmTMB_no_prior.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_no_prior.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_no_prior_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_wilcoxon.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_wilcoxon.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_wilcoxon \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon mincomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_wilcoxon.mincomb.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_wilcoxon.mincomb.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_wilcoxon_mincomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# wilcoxon fishercomb
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_test.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.internal_wilcoxon.fisher_combined.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/n_choose_2.test/test_n_choose_2.TSSTTS_wilcoxon.fisher_combined.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_n_choose_2_wilcoxon_fishercomb \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# ============================================================
+# multinomial
+# ============================================================
+
+# plugin_dm_EB
 Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_multinomial_test.R \
-    ~/GrASE_simulation/multinomial.dm/test_multinomial.internal_multinomial_dm_EB.annotated.txt \
-    ~/GrASE_simulation/results/sim_exon_info \
-    ~/GrASE_simulation/results/eval_multinomial_dm \
-    ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
+  "/mnt/data1/home/mirahan/GrASE_simulation/multinomial.test/test_multinomial.internal_multinomial_plugin_dm_EB.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/multinomial.test/test_multinomial.TSSTTS_multinomial_plugin_dm_EB.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_multinomial_plugin_dm \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+# ============================================================
+# tools comparison (rMATS + Saturn)
+# ============================================================
 
 Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_tools_vs_gt.R \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
@@ -30,17 +206,22 @@ Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_tools_vs_gt.R \
   /mnt/data1/home/mirahan/GrASE_simulation/map_rmats \
   /mnt/data1/home/mirahan/GrASE_simulation/saturn/saturn_group1_group2/all.group1_group2.sumExp_filteredbyCountMultiExon.txt \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_saturn_rmats \
-  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda \
-  2>&1
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
 
 
-Rscript ~/GrASE/scripts/evaluate_bipartition_test.R   ../bipartition_both.test/test_bipartition_both.internal_glmmTMB_fixedEB.annotated.txt,../bipartition_both.test/test_bipartition_both.TSSTTS_glmmTMB_fixedEB.annotated.txt   sim_exon_info   evaluation_phifix ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_dte_bubble.R \
+  "/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.internal_glmmTMB_fixedEB.annotated.txt,/mnt/data1/home/mirahan/GrASE_simulation/bipartition.test/test_bipartition.TSSTTS_glmmTMB_fixedEB.annotated.txt" \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_dte \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
-Rscript ~/GrASE/scripts/evaluate_bipartition_test.R ../bipartition_both.test/test_bipartition_both.internal_glmmTMB_fixedEB.mincomb.annotated.txt,../bipartition_both.test/test_bipartition_both.TSSTTS_glmmTMB_fixedEB.mincomb.annotated.txt sim_exon_info   evaluation_phifix_mincomb ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
-Rscript ~/GrASE/scripts/evaluate_bipartition_test.R ../bipartition_both.test/test_bipartition_both.internal_glmmTMB_fixedEB.fisher_combined.annotated.txt,../bipartition_both.test/test_bipartition_both.TSSTTS_glmmTMB_fixedEB.fisher_combined.annotated.txt sim_exon_info   evaluation_phifix_fishercomb ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
+# ============================================================
+# visualize
+# ============================================================
+python visualize_eval.py --groups bipartition
+python visualize_eval.py --groups n_choose_2
+python visualize_eval.py --groups cross --best-n-choose-2 fixedEB  --best-bipartition fixedEB
+python visualize_eval.py --groups tools --best-grase bipartition.fixedEB 
 
-
-
-Rscript ~/GrASE/scripts/evaluate_bipartition_test.R   ../n_choose_2.test/test_n_choose_2.internal_glmmTMB_fixedEB.annotated.txt,../n_choose_2.test/test_n_choose_2.TSSTTS_glmmTMB_fixedEB.annotated.txt   sim_exon_info   eval_n_choose_2 ~/GrASE_simulation/swimdown/simulate/data/simulate.rda
