@@ -29,7 +29,7 @@ n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  cat("Usage: Rscript evaluate_dte_fp_source.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
+  cat("Usage: Rscript evaluate_dte_fp_source.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]\n")
   quit(save = "no", status = 1)
 }
 
@@ -37,6 +37,9 @@ test_files <- trimws(unlist(strsplit(args[1], ",")))
 gt_dir     <- args[2]
 out_dir    <- args[3]
 sim_rda    <- args[4]
+delta      <- if (length(args) >= 5) as.numeric(args[5]) else 0
+
+cat(sprintf("lfc_diff_net delta = %g\n", delta))
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -58,10 +61,12 @@ tests_list <- lapply(test_files, function(f) {
 })
 tests <- bind_rows(tests_list)
 
-# min padj per (gene, event) across files; keep setdiff
+# row with min padj per (gene, event) across files; preserves lfc_diff_net
 tests_ev <- tests %>%
-  group_by(gene, event, setdiff) %>%
-  summarise(padj = min(padj, na.rm = TRUE), .groups = "drop") %>%
+  group_by(gene, event) %>%
+  slice(which.min(replace(padj, is.na(padj), Inf))) %>%
+  ungroup() %>%
+  select(gene, event, setdiff, padj, any_of("lfc_diff_net")) %>%
   mutate(event_base = sub("_s[12]$", "", event))
 
 # load simulation type labels -------------------------------------------
@@ -103,8 +108,8 @@ cat(sprintf("  DTE genes in GT: %d\n", length(dte_genes_in_gt)))
 
 # per-threshold FP decomposition ----------------------------------------
 
-eval_one_threshold <- function(thr) {
-  cat(sprintf("  padj < %.2f\n", thr))
+eval_one_threshold <- function(thr, use_lfc = FALSE) {
+  cat(sprintf("  padj < %.2f%s\n", thr, if (use_lfc) "  [+lfc_diff_net]" else ""))
 
   rows <- mclapply(dte_genes_in_gt, mc.cores = n_cores, function(gene) {
   tryCatch({
@@ -128,7 +133,10 @@ eval_one_threshold <- function(thr) {
                                     function(ex) any(ex %in% gt_pos_restricted))
 
     # only significant rows
-    sig <- gene_tests[!is.na(gene_tests$padj) & gene_tests$padj < thr, ]
+    lfc_ok <- if (use_lfc && "lfc_diff_net" %in% names(gene_tests))
+                (is.na(gene_tests$lfc_diff_net) | gene_tests$lfc_diff_net > delta)
+              else TRUE
+    sig <- gene_tests[!is.na(gene_tests$padj) & gene_tests$padj < thr & lfc_ok, ]
     if (nrow(sig) == 0) return(NULL)
 
     # for each event_base: is there any significant GT-positive side?
@@ -222,19 +230,28 @@ eval_one_threshold <- function(thr) {
   list(per_gene = per_gene, summary = summary)
 }
 
-cat("\nRunning FP source decomposition...\n")
-results <- lapply(padj_thresholds, eval_one_threshold)
+write_results <- function(results, per_gene_file, summary_file) {
+  per_gene_all <- bind_rows(lapply(results, `[[`, "per_gene"))
+  summary_all  <- bind_rows(lapply(results, `[[`, "summary"))
+  write.table(per_gene_all, per_gene_file, sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(summary_all,  summary_file,  sep = "\t", quote = FALSE, row.names = FALSE)
+  summary_all
+}
 
-per_gene_all <- bind_rows(lapply(results, `[[`, "per_gene"))
-summary_all  <- bind_rows(lapply(results, `[[`, "summary"))
+cat("\nRunning FP source decomposition (baseline)...\n")
+res_base <- lapply(padj_thresholds, eval_one_threshold, use_lfc = FALSE)
+summary_base <- write_results(res_base,
+  file.path(out_dir, "dte_fp_source_per_gene.txt"),
+  file.path(out_dir, "dte_fp_source_summary.txt"))
 
-write.table(per_gene_all,
-            file.path(out_dir, "dte_fp_source_per_gene.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
-write.table(summary_all,
-            file.path(out_dir, "dte_fp_source_summary.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
+cat("\nRunning FP source decomposition (lfc_diff_net filtered)...\n")
+res_lfc <- lapply(padj_thresholds, eval_one_threshold, use_lfc = TRUE)
+summary_lfc <- write_results(res_lfc,
+  file.path(out_dir, "dte_fp_source_per_gene_lfc_filtered.txt"),
+  file.path(out_dir, "dte_fp_source_summary_lfc_filtered.txt"))
 
 cat(sprintf("\nResults written to: %s\n", out_dir))
-cat("\n=== Summary ===\n")
-print(summary_all)
+cat("\n=== Summary (baseline) ===\n")
+print(summary_base)
+cat("\n=== Summary (lfc_diff_net filtered) ===\n")
+print(summary_lfc)

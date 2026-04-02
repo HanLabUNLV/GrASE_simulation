@@ -23,7 +23,7 @@ n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  cat("Usage: Rscript evaluate_dte_bubble.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
+  cat("Usage: Rscript evaluate_dte_bubble.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]\n")
   quit(save = "no", status = 1)
 }
 
@@ -31,6 +31,9 @@ test_files <- trimws(unlist(strsplit(args[1], ",")))
 gt_dir     <- args[2]
 out_dir    <- args[3]
 sim_rda    <- args[4]
+delta      <- if (length(args) >= 5) as.numeric(args[5]) else 0
+
+cat(sprintf("lfc_diff_net delta = %g\n", delta))
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -53,10 +56,12 @@ tests_list <- lapply(test_files, function(f) {
 tests <- bind_rows(tests_list)
 cat(sprintf("  %d rows, %d genes\n", nrow(tests), length(unique(tests$gene))))
 
-# keep event + setdiff + padj; min padj across files per (gene, event)
+# row with min padj per (gene, event) across files; preserves lfc_diff_net
 tests_ev <- tests %>%
-  group_by(gene, event, setdiff) %>%
-  summarise(padj = min(padj, na.rm = TRUE), .groups = "drop") %>%
+  group_by(gene, event) %>%
+  slice(which.min(replace(padj, is.na(padj), Inf))) %>%
+  ungroup() %>%
+  select(gene, event, setdiff, padj, any_of("lfc_diff_net")) %>%
   mutate(event_base = sub("_s[12]$", "", event))
 
 # load simulation type labels -------------------------------------------
@@ -106,11 +111,14 @@ cat(sprintf("  DTE genes in GT: %d\n", length(dte_genes_in_gt)))
 
 # bubble-level evaluation -----------------------------------------------
 
-eval_one_threshold <- function(thr) {
-  cat(sprintf("  padj < %.2f\n", thr))
+eval_one_threshold <- function(thr, use_lfc = FALSE) {
+  cat(sprintf("  padj < %.2f%s\n", thr, if (use_lfc) "  [+lfc_diff_net]" else ""))
 
+  lfc_ok_ev <- if (use_lfc && "lfc_diff_net" %in% names(tests_ev))
+                 (is.na(tests_ev$lfc_diff_net) | tests_ev$lfc_diff_net > delta)
+               else TRUE
   sig_ev <- tests_ev %>%
-    filter(!is.na(padj) & padj < thr) %>%
+    filter(!is.na(padj) & padj < thr & lfc_ok_ev) %>%
     select(gene, event, event_base) %>%
     distinct()
   sig_by_gene <- split(sig_ev, sig_ev$gene)
@@ -159,13 +167,20 @@ eval_one_threshold <- function(thr) {
 
       wrong_side <- 0L
       for (eb in detected) {
+        lfc_ok_gt <- if (use_lfc && "lfc_diff_net" %in% names(gene_tests))
+                       (is.na(gene_tests$lfc_diff_net) | gene_tests$lfc_diff_net > delta)
+                     else TRUE
         sig_rows <- gene_tests[gene_tests$event_base == eb &
                                  !is.na(gene_tests$padj) &
-                                 gene_tests$padj < thr, ]
+                                 gene_tests$padj < thr & lfc_ok_gt, ]
         if (!any(sig_rows$has_gt_pos)) wrong_side <- wrong_side + 1L
       }
 
-      sig_rows_all <- gene_tests[!is.na(gene_tests$padj) & gene_tests$padj < thr, ]
+      lfc_ok_all <- if (use_lfc && "lfc_diff_net" %in% names(gene_tests))
+                      (is.na(gene_tests$lfc_diff_net) | gene_tests$lfc_diff_net > delta)
+                    else TRUE
+      sig_rows_all <- gene_tests[!is.na(gene_tests$padj) & gene_tests$padj < thr &
+                                   lfc_ok_all, ]
       det_exparts  <- unique(unlist(sig_rows_all$setdiff_exons))
       exon_TP <- length(intersect(det_exparts, gt_pos_restricted))
       exon_FP <- length(intersect(det_exparts, gt_neg_restricted))
@@ -224,19 +239,28 @@ eval_one_threshold <- function(thr) {
   list(per_gene = per_gene, summary = summary)
 }
 
-cat("\nRunning bubble-level DTE evaluation...\n")
-results <- lapply(padj_thresholds, eval_one_threshold)
+write_results <- function(results, per_gene_file, summary_file) {
+  per_gene_all <- bind_rows(lapply(results, `[[`, "per_gene"))
+  summary_all  <- bind_rows(lapply(results, `[[`, "summary"))
+  write.table(per_gene_all, per_gene_file, sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(summary_all,  summary_file,  sep = "\t", quote = FALSE, row.names = FALSE)
+  summary_all
+}
 
-per_gene_all <- bind_rows(lapply(results, `[[`, "per_gene"))
-summary_all  <- bind_rows(lapply(results, `[[`, "summary"))
+cat("\nRunning bubble-level DTE evaluation (baseline)...\n")
+res_base <- lapply(padj_thresholds, eval_one_threshold, use_lfc = FALSE)
+summary_base <- write_results(res_base,
+  file.path(out_dir, "dte_bubble_per_gene.txt"),
+  file.path(out_dir, "dte_bubble_summary.txt"))
 
-write.table(per_gene_all,
-            file.path(out_dir, "dte_bubble_per_gene.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
-write.table(summary_all,
-            file.path(out_dir, "dte_bubble_summary.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
+cat("\nRunning bubble-level DTE evaluation (lfc_diff_net filtered)...\n")
+res_lfc <- lapply(padj_thresholds, eval_one_threshold, use_lfc = TRUE)
+summary_lfc <- write_results(res_lfc,
+  file.path(out_dir, "dte_bubble_per_gene_lfc_filtered.txt"),
+  file.path(out_dir, "dte_bubble_summary_lfc_filtered.txt"))
 
 cat(sprintf("\nResults written to: %s\n", out_dir))
-cat("\n=== Summary ===\n")
-print(summary_all)
+cat("\n=== Summary (baseline) ===\n")
+print(summary_base)
+cat("\n=== Summary (lfc_diff_net filtered) ===\n")
+print(summary_lfc)

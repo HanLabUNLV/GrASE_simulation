@@ -26,11 +26,13 @@
 #     Restricted           : universe = only GrASE-testable exons (setdiff)
 #
 # Usage:
-#   Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>
+#   Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]
 #
 #   <test_results> may be a single file path or a comma-separated list of paths.
-#   When multiple files are given they are combined: the minimum
-#   padj across files is used per (gene, setdiff).
+#   When multiple files are given they are combined: the row with minimum
+#   padj is kept per (gene, setdiff).
+#   <delta>        lfc_diff_net threshold (default 0); significant calls also
+#                  require lfc_diff_net > delta (NA lfc_diff_net rows pass).
 #
 # Outputs:
 #   grase_per_gene_padj<thr>.txt                  per-gene metrics (full GT)
@@ -44,7 +46,7 @@ n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  cat("Usage: Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
+  cat("Usage: Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]\n")
   quit(save = "no", status = 1)
 }
 
@@ -52,6 +54,9 @@ test_files  <- trimws(unlist(strsplit(args[1], ",")))
 gt_dir      <- args[2]
 out_dir     <- args[3]
 sim_rda     <- args[4]
+delta       <- if (length(args) >= 5) as.numeric(args[5]) else 0
+
+cat(sprintf("lfc_diff_net delta = %g\n", delta))
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -82,14 +87,13 @@ tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
-# when multiple files are combined, take the minimum padj per (gene, setdiff)
-if (length(test_files) > 1) {
-  tests_eval <- tests %>%
-    group_by(gene, setdiff) %>%
-    summarise(padj = min(padj, na.rm = TRUE), .groups = "drop")
-} else {
-  tests_eval <- tests %>% select(gene, setdiff, padj)
-}
+# when multiple files are combined, take the row with minimum padj per (gene, setdiff)
+# (preserves lfc_diff_net from the same row)
+tests_eval <- tests %>%
+  group_by(gene, setdiff) %>%
+  slice(which.min(replace(padj, is.na(padj), Inf))) %>%
+  ungroup() %>%
+  select(gene, setdiff, padj, lfc_diff_net)
 
 # build per-gene set of exonic parts grase explicitly tested (setdiff only)
 # setdiff may be a comma-separated list of exonic parts; split before deduplicating
@@ -154,7 +158,41 @@ gt_all$sim_type <- sapply(gt_all$gene, get_sim_type)
 # pre-split gt_all by gene for o(1) lookup 
 gt_by_gene <- split(gt_all, gt_all$gene)
 
-# exonic part detection 
+# per-event lfc_diff_net vs TP/FP labeling
+
+cat("\nWriting per-event lfc_diff_net labels...\n")
+per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, function(i) {
+  row      <- tests_eval[i, ]
+  gene     <- row$gene
+  gt_gene  <- gt_by_gene[[gene]]
+  sim_type <- get_sim_type(gene)
+
+  if (is.null(gt_gene) || nrow(gt_gene) == 0) {
+    return(data.frame(gene = gene, setdiff = row$setdiff,
+                      padj = row$padj, lfc_diff_net = row$lfc_diff_net,
+                      sim_type = sim_type,
+                      overlaps_gt_pos = NA, overlaps_gt_neg = NA,
+                      stringsAsFactors = FALSE))
+  }
+
+  gt_pos <- unique(gt_gene$exonic_part[gt_gene$group == "changed"])
+  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"])
+  ex     <- parse_exparts(row$setdiff)
+
+  data.frame(gene = gene, setdiff = row$setdiff,
+             padj = row$padj, lfc_diff_net = row$lfc_diff_net,
+             sim_type = sim_type,
+             overlaps_gt_pos = any(ex %in% gt_pos),
+             overlaps_gt_neg = any(ex %in% gt_neg),
+             stringsAsFactors = FALSE)
+})
+per_event_df <- bind_rows(per_event_rows)
+write.table(per_event_df,
+            file.path(out_dir, "per_event_lfc_diff_net.txt"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+cat(sprintf("  wrote %d rows to per_event_lfc_diff_net.txt\n", nrow(per_event_df)))
+
+# exonic part detection
 
 cat("\nRunning exonic part detection...\n")
 
@@ -187,7 +225,8 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
   for (thr in padj_thresholds) {
     cat(sprintf("    padj < %.2f\n", thr))
 
-    sig_rows    <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr, ]
+    sig_rows    <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
+                               (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta), ]
     det_by_gene <- split(sig_rows$setdiff, sig_rows$gene)
 
     rows <- mclapply(eval_genes, mc.cores = n_cores, function(gene) {
