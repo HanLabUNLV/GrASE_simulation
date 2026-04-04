@@ -200,12 +200,21 @@ Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_multinomial_te
 # tools comparison (rMATS + Saturn)
 # ============================================================
 
-Rscript /mnt/data1/home/mirahan/GrASE/scripts/evaluate_tools_vs_gt.R \
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_tools_vs_gt.R \
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/rMATS/rmats_post_group1_group2 \
   /mnt/data1/home/mirahan/GrASE_simulation/map_rmats \
   /mnt/data1/home/mirahan/GrASE_simulation/saturn/saturn_group1_group2/all.group1_group2.sumExp_filteredbyCountMultiExon.txt \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_saturn_rmats \
+  /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+
+Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_tools_dexseq_vs_gt.R \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
+  /mnt/data1/home/mirahan/GrASE_simulation/rMATS/rmats_post_group1_group2 \
+  /mnt/data1/home/mirahan/GrASE_simulation/map_rmats \
+  /mnt/data1/home/mirahan/GrASE_simulation/DEXSeq/dexseq_group1_group2/all.group1_group2.dxd_filteredbyCountMultiExon.txt \
+  /mnt/data1/home/mirahan/GrASE_simulation/results/eval_dexseq_rmats \
   /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
 
 

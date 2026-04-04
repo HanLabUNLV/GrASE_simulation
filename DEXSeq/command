@@ -1,3 +1,10 @@
 ls $HOME/Love_simulation/STAR/group1/bam/*.Aligned.sortedByCoord.out.bam | parallel -j 20 bash dexseq_count.sh group1 {} 
 ls $HOME/Love_simulation/STAR/group2/bam/*.Aligned.sortedByCoord.out.bam | parallel -j 20 bash dexseq_count.sh group2 {} 
 
+
+Rscript dexseq.R \
+  --gff ../ref/gencode.v28.dexseq.bygene.gff \
+  --cntdir ../DEXSeq/count_files \
+  --outdir dexseq_group1_group2 \
+  --cell1 group1 \
+  --cell2 group2 
