@@ -81,25 +81,26 @@ tests_list <- lapply(test_files, function(f) {
   cat(sprintf("  %s\n", basename(f)))
   read.table(f, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
              quote = "", comment.char = "", na.strings = c("NA", ""),
-             colClasses = c(source = "character", sink = "character"))
+             colClasses = c(source = "character", sink = "character",
+                            comparison = "character",
+                            setdiff1 = "character", setdiff2 = "character"))
 })
 tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
-# when multiple files are combined, take the row with minimum padj per (gene, setdiff)
-# (preserves lfc_diff_net from the same row)
+# Each row is one comparison (diff1_vs_ref or diff2_vs_ref); evaluate independently.
 tests_eval <- tests %>%
-  group_by(gene, setdiff) %>%
-  slice(which.min(replace(padj, is.na(padj), Inf))) %>%
-  ungroup() %>%
-  select(gene, setdiff, padj, lfc_diff_net)
+  select(gene, event, comparison, padj, lfc_diff_net, setdiff1, setdiff2)
 
 # build per-gene set of exonic parts grase explicitly tested (setdiff only)
 # setdiff may be a comma-separated list of exonic parts; split before deduplicating
 grase_testable_by_gene <- lapply(
-  split(tests_eval$setdiff, tests_eval$gene),
-  function(x) unique(unlist(lapply(x[!is.na(x) & nchar(x) > 0], parse_exparts)))
+  split(tests_eval %>% select(setdiff1, setdiff2), tests_eval$gene),
+  function(df) {
+    all_setdiffs <- c(df$setdiff1, df$setdiff2)
+    unique(unlist(lapply(all_setdiffs[!is.na(all_setdiffs) & nchar(all_setdiffs) > 0], parse_exparts)))
+  }
 )
 cat(sprintf("  grase: %d genes with testable exonic parts (setdiff only)\n",
             length(grase_testable_by_gene)))
@@ -162,24 +163,36 @@ gt_by_gene <- split(gt_all, gt_all$gene)
 
 cat("\nWriting per-event lfc_diff_net labels...\n")
 per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, function(i) {
-  row      <- tests_eval[i, ]
-  gene     <- row$gene
-  gt_gene  <- gt_by_gene[[gene]]
+  row <- tests_eval[i, ]
+  gene <- row$gene
+  event <- row$event # Get event ID
+  gt_gene <- gt_by_gene[[gene]]
   sim_type <- get_sim_type(gene)
 
   if (is.null(gt_gene) || nrow(gt_gene) == 0) {
-    return(data.frame(gene = gene, setdiff = row$setdiff,
+    # Combine setdiff1 and setdiff2 for a single 'setdiff' representation in this output
+    combined_setdiff <- paste(c(row$setdiff1, row$setdiff2)[!is.na(c(row$setdiff1, row$setdiff2))], collapse = ",")
+    if (combined_setdiff == "") combined_setdiff <- NA_character_
+
+    return(data.frame(gene = gene, event = event, comparison = row$comparison,
+                      setdiff = combined_setdiff,
                       padj = row$padj, lfc_diff_net = row$lfc_diff_net,
                       sim_type = sim_type,
                       overlaps_gt_pos = NA, overlaps_gt_neg = NA,
                       stringsAsFactors = FALSE))
   }
 
-  gt_pos <- unique(gt_gene$exonic_part[gt_gene$group == "changed"])
-  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"])
-  ex     <- parse_exparts(row$setdiff)
+  gt_pos <- unique(gt_gene$exonic_part[gt_gene$group == "changed"]) # GT positive exonic parts
+  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"]) # GT negative exonic parts
 
-  data.frame(gene = gene, setdiff = row$setdiff,
+  # Combine setdiff1 and setdiff2 for the current event to check for overlaps
+  event_setdiffs <- c(row$setdiff1, row$setdiff2)
+  ex <- unique(unlist(lapply(event_setdiffs[!is.na(event_setdiffs) & nchar(event_setdiffs) > 0], parse_exparts)))
+  combined_setdiff <- paste(event_setdiffs[!is.na(event_setdiffs)], collapse = ",")
+  if (combined_setdiff == "") combined_setdiff <- NA_character_
+
+  data.frame(gene = gene, event = event, comparison = row$comparison,
+             setdiff = combined_setdiff,
              padj = row$padj, lfc_diff_net = row$lfc_diff_net,
              sim_type = sim_type,
              overlaps_gt_pos = any(ex %in% gt_pos),
@@ -225,9 +238,17 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
   for (thr in padj_thresholds) {
     cat(sprintf("    padj < %.2f\n", thr))
 
-    sig_rows    <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
-                               (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta), ]
-    det_by_gene <- split(sig_rows$setdiff, sig_rows$gene)
+    sig_rows <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
+                             (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta), ]
+    
+    # Detected exonic parts: union of setdiff1/setdiff2 from all significant comparison rows.
+    det_by_gene <- lapply(
+      split(sig_rows %>% select(setdiff1, setdiff2), sig_rows$gene),
+      function(df) {
+        all_setdiffs <- c(df$setdiff1, df$setdiff2)
+        unique(unlist(lapply(all_setdiffs[!is.na(all_setdiffs) & nchar(all_setdiffs) > 0], parse_exparts)))
+      }
+    )
 
     rows <- mclapply(eval_genes, mc.cores = n_cores, function(gene) {
       gt_gene <- gt_by_gene[[gene]]
