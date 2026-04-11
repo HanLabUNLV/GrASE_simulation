@@ -8,8 +8,8 @@
 #   baseline : padj < threshold
 #   filtered : padj < threshold & lfc_diff_net > delta
 #
-# lfc_diff_net = abs(lfc_diff) - abs(lfc_ref), computed post-hoc from the count
-# files using compute_lfc_summary().  Positive values indicate the diff exon
+# lfc_diff_net = abs(lfc_diff) - abs(lfc_ref), pre-computed by exontest.R and
+# present in the annotated files.  Positive values indicate the diff exon
 # changes more than the ref exon (genuine DTU signal); negative values suggest
 # the ref exon is the driver (denominator-effect FP).
 #
@@ -25,10 +25,9 @@
 #
 # Usage:
 #   Rscript evaluate_posthoc_lfc_filter.R \
-#     <test_files> <count_files> <gt_dir> <out_dir> <simulate_rda> [<delta>]
+#     <test_files> <gt_dir> <out_dir> <simulate_rda> [<delta>]
 #
 #   test_files  : comma-separated .annotated.txt result files
-#   count_files : comma-separated combined exoncnt files (same order)
 #   gt_dir      : directory with ground-truth .exonic_parts_fc.txt files
 #   out_dir     : output directory
 #   simulate_rda: path to simulate.rda with dge.genes / dte.genes / dtu.genes
@@ -41,22 +40,19 @@ suppressPackageStartupMessages(library(grase))
 n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 5) {
+if (length(args) < 4) {
   cat(paste0(
     "Usage: Rscript evaluate_posthoc_lfc_filter.R",
-    " <test_files> <count_files> <gt_dir> <out_dir> <simulate_rda>",
+    " <test_files> <gt_dir> <out_dir> <simulate_rda>",
     " [<delta>]\n"))
   quit(save = "no", status = 1)
 }
 
 test_files  <- trimws(unlist(strsplit(args[1], ",")))
-count_files <- trimws(unlist(strsplit(args[2], ",")))
-gt_dir      <- args[3]
-out_dir     <- args[4]
-sim_rda     <- args[5]
-delta       <- if (length(args) >= 6) as.numeric(args[6]) else 0
-cond1       <- "group1"
-cond2       <- "group2"
+gt_dir      <- args[2]
+out_dir     <- args[3]
+sim_rda     <- args[4]
+delta       <- if (length(args) >= 5) as.numeric(args[5]) else 0
 
 cat(sprintf("delta = %g\n", delta))
 
@@ -75,24 +71,15 @@ f1_safe <- function(p, r) {
 
 # --- load test results -------------------------------------------------------
 
-if (length(count_files) != length(test_files)) {
-  stop("count_files and test_files must have the same number of entries")
-}
-
-cat(sprintf("loading %d test/count file pair(s)...\n", length(test_files)))
-tests_list <- lapply(seq_along(test_files), function(i) {
-  tf <- test_files[i]
-  cf <- count_files[i]
+cat(sprintf("loading %d test file(s)...\n", length(test_files)))
+tests_list <- lapply(test_files, function(tf) {
   cat(sprintf("  %s\n", basename(tf)))
   t <- read.table(tf, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
                   quote = "", comment.char = "", na.strings = c("NA", ""),
-                  colClasses = c(source = "character", sink = "character"))
-  cat(sprintf("  %s\n", basename(cf)))
-  sc <- read.table(cf, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
-                   quote = "", comment.char = "", row.names = NULL)
-  sc$groups <- factor(sc$groups, levels = c(cond2, cond1))
-  lfc <- compute_lfc_summary(sc)
-  left_join(t, lfc, by = c("gene", "event"))
+                  colClasses = c(source = "character", sink = "character",
+                                 comparison = "character",
+                                 setdiff1 = "character", setdiff2 = "character"))
+  t %>% mutate(setdiff = ifelse(comparison == "diff1_vs_ref", setdiff1, setdiff2))
 })
 tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes\n",
