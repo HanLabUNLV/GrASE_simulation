@@ -83,15 +83,17 @@ tests_list <- lapply(test_files, function(f) {
              quote = "", comment.char = "", na.strings = c("NA", ""),
              colClasses = c(source = "character", sink = "character",
                             comparison = "character",
-                            setdiff1 = "character", setdiff2 = "character"))
+                            setdiff1 = "character", setdiff2 = "character",
+                            setdiff_union = "character"))
 })
 tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
-# Each row is one comparison (diff1_vs_ref or diff2_vs_ref); evaluate independently.
+# Each row is one comparison (base) or one event (combination files with setdiff_union).
 tests_eval <- tests %>%
-  select(gene, event, comparison, padj, lfc_diff_net, setdiff1, setdiff2)
+  select(gene, event, comparison, padj, lfc_diff_net, setdiff1, setdiff2,
+         any_of("setdiff_union"))
 
 # build per-gene set of exonic parts grase explicitly tested (setdiff only)
 # setdiff may be a comma-separated list of exonic parts; split before deduplicating
@@ -169,11 +171,21 @@ per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, functi
   gt_gene <- gt_by_gene[[gene]]
   sim_type <- get_sim_type(gene)
 
-  if (is.null(gt_gene) || nrow(gt_gene) == 0) {
-    # Combine setdiff1 and setdiff2 for a single 'setdiff' representation in this output
-    combined_setdiff <- paste(c(row$setdiff1, row$setdiff2)[!is.na(c(row$setdiff1, row$setdiff2))], collapse = ",")
-    if (combined_setdiff == "") combined_setdiff <- NA_character_
+  # Resolve the exonic parts to check for overlaps.
+  # Combination files have setdiff_union; base files use setdiff1 + setdiff2.
+  if (!is.null(row$setdiff_union) && !is.na(row$setdiff_union) && nchar(row$setdiff_union) > 0) {
+    combined_setdiff <- row$setdiff_union
+    event_setdiffs   <- row$setdiff_union
+  } else {
+    raw <- c(row$setdiff1, row$setdiff2)
+    raw <- raw[!is.na(raw)]
+    combined_setdiff <- if (length(raw) > 0) paste(raw, collapse = ",") else NA_character_
+    event_setdiffs   <- raw
+  }
+  ex <- unique(unlist(lapply(
+    event_setdiffs[!is.na(event_setdiffs) & nchar(event_setdiffs) > 0], parse_exparts)))
 
+  if (is.null(gt_gene) || nrow(gt_gene) == 0) {
     return(data.frame(gene = gene, event = event, comparison = row$comparison,
                       setdiff = combined_setdiff,
                       padj = row$padj, lfc_diff_net = row$lfc_diff_net,
@@ -184,12 +196,6 @@ per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, functi
 
   gt_pos <- unique(gt_gene$exonic_part[gt_gene$group == "changed"]) # GT positive exonic parts
   gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"]) # GT negative exonic parts
-
-  # Combine setdiff1 and setdiff2 for the current event to check for overlaps
-  event_setdiffs <- c(row$setdiff1, row$setdiff2)
-  ex <- unique(unlist(lapply(event_setdiffs[!is.na(event_setdiffs) & nchar(event_setdiffs) > 0], parse_exparts)))
-  combined_setdiff <- paste(event_setdiffs[!is.na(event_setdiffs)], collapse = ",")
-  if (combined_setdiff == "") combined_setdiff <- NA_character_
 
   data.frame(gene = gene, event = event, comparison = row$comparison,
              setdiff = combined_setdiff,
@@ -241,12 +247,21 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
     sig_rows <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
                              (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta), ]
     
-    # Detected exonic parts: union of setdiff1/setdiff2 from all significant comparison rows.
+    # Detected exonic parts:
+    # - combination files (setdiff_union present): use the precomputed union of both sides.
+    # - base files: use only the comparison-relevant setdiff per row
+    #     (diff1_vs_ref -> setdiff1, diff2_vs_ref -> setdiff2).
+    has_union <- "setdiff_union" %in% names(sig_rows)
     det_by_gene <- lapply(
-      split(sig_rows %>% select(setdiff1, setdiff2), sig_rows$gene),
+      split(sig_rows %>% select(comparison, setdiff1, setdiff2,
+                                any_of("setdiff_union")), sig_rows$gene),
       function(df) {
-        all_setdiffs <- c(df$setdiff1, df$setdiff2)
-        unique(unlist(lapply(all_setdiffs[!is.na(all_setdiffs) & nchar(all_setdiffs) > 0], parse_exparts)))
+        parts <- if (has_union) {
+          df$setdiff_union
+        } else {
+          ifelse(df$comparison == "diff1_vs_ref", df$setdiff1, df$setdiff2)
+        }
+        unique(unlist(lapply(parts[!is.na(parts) & nchar(parts) > 0], parse_exparts)))
       }
     )
 
