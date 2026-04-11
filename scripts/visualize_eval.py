@@ -71,6 +71,7 @@ MULTINOMIAL_METHODS = {
 
 TOOLS_METHODS = {
     "rmats":             {"dir": "eval_saturn_rmats", "prefix": "rmats"},
+    "dexseq":            {"dir": "eval_dexseq_rmats", "prefix": "dexseq"},
     "saturn":            {"dir": "eval_saturn_rmats", "prefix": "saturn"},
     "saturn_regularFDR": {"dir": "eval_saturn_rmats", "prefix": "saturn_regularFDR"},
 }
@@ -88,20 +89,21 @@ PADJ_THRESHOLDS = [0.01, 0.05, 0.10, 0.20]
 SIM_TYPES_ORDERED = ["ALL", "Background", "DGE", "DTE", "DTU"]
 
 MODEL_LABELS = {
-    "fixedEB":             "fixedEB",
-    "fixedEB_mincomb":     "fixedEB (mincomb)",
-    "fixedEB_fishercomb":  "fixedEB (fishercomb)",
-    "prior":               "prior",
-    "prior_mincomb":       "prior (mincomb)",
-    "prior_fishercomb":    "prior (fishercomb)",
-    "no_prior":            "no_prior",
-    "no_prior_mincomb":    "no_prior (mincomb)",
-    "no_prior_fishercomb": "no_prior (fishercomb)",
+    "fixedEB":             "EBfixed",
+    "fixedEB_mincomb":     "EBfixed (mincomb)",
+    "fixedEB_fishercomb":  "EBfixed (fishercomb)",
+    "prior":               "EBprior",
+    "prior_mincomb":       "EBprior (mincomb)",
+    "prior_fishercomb":    "EBprior (fishercomb)",
+    "no_prior":            "MLE",
+    "no_prior_mincomb":    "MLE (mincomb)",
+    "no_prior_fishercomb": "MLE (fishercomb)",
     "wilcoxon":            "wilcoxon",
     "wilcoxon_mincomb":    "wilcoxon (mincomb)",
     "wilcoxon_fishercomb": "wilcoxon (fishercomb)",
     "plugin_dm_EB":        "Multinomial (plugin_dm_EB)",
     "rmats":               "rMATS",
+    "dexseq":              "DEXSeq",
     "saturn":              "Saturn (empirical FDR)",
     "saturn_regularFDR":   "Saturn (regular FDR)",
 }
@@ -141,6 +143,7 @@ CROSS_PALETTE = {
 
 TOOLS_PALETTE = {
     "rmats":             "#e377c2",  # pink
+    "dexseq":            "#9467bd",  # purple
     "saturn":            "#8c564b",  # brown
     "saturn_regularFDR": "#c49c94",  # light brown
 }
@@ -609,6 +612,18 @@ def run_group(results_dir, methods_dict, palette, labels, group_name,
                                  padj=padj, suffix=suffix)
         fig_confusion_counts(summary, methods, palette, labels, out_dir, title,
                              padj=padj, suffix=suffix)
+        # separate plots for raw vs combined-pval methods
+        raw_methods  = [m for m in methods
+                        if not any(c in m for c in ("mincomb", "fishercomb"))]
+        comb_methods = [m for m in methods
+                        if any(c in m for c in ("mincomb", "fishercomb"))]
+        if raw_methods and comb_methods:
+            fig_confusion_counts(summary, raw_methods, palette, labels, out_dir,
+                                 title + " (raw)", padj=padj,
+                                 suffix=suffix + "_raw")
+            fig_confusion_counts(summary, comb_methods, palette, labels, out_dir,
+                                 title + " (combined pval)", padj=padj,
+                                 suffix=suffix + "_comb")
 
     return summary_full  # non-restricted, used by cross comparison
 
