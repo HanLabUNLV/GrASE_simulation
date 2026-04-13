@@ -57,16 +57,23 @@ tests_list <- lapply(test_files, function(f) {
   cat(sprintf("  %s\n", basename(f)))
   read.table(f, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
              quote = "", comment.char = "", na.strings = c("NA", ""),
-             colClasses = c(source = "character", sink = "character"))
+             colClasses = c(source = "character", sink = "character",
+                            comparison = "character",
+                            setdiff1 = "character", setdiff2 = "character"))
 })
 tests <- bind_rows(tests_list)
 
-# row with min padj per (gene, event) across files; preserves lfc_diff_net
+# derive comparison-relevant setdiff: each row is one comparison direction,
+# so use setdiff1 for diff1_vs_ref and setdiff2 for diff2_vs_ref.
+if ("comparison" %in% names(tests) && "setdiff1" %in% names(tests)) {
+  tests <- tests %>% mutate(
+    setdiff = ifelse(comparison == "diff1_vs_ref", setdiff1, setdiff2)
+  )
+}
+
+# keep all comparison rows; each row is evaluated independently.
 tests_ev <- tests %>%
-  group_by(gene, event) %>%
-  slice(which.min(replace(padj, is.na(padj), Inf))) %>%
-  ungroup() %>%
-  select(gene, event, setdiff, padj, any_of("lfc_diff_net")) %>%
+  select(gene, event, comparison, setdiff, padj, any_of("lfc_diff_net")) %>%
   mutate(event_base = sub("_s[12]$", "", event))
 
 # load simulation type labels -------------------------------------------
