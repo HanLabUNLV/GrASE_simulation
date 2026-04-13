@@ -36,37 +36,37 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 
 BIPARTITION_METHODS = {
-    "fixedEB":             {"dir": "eval_bipartition_fixedEB",             "prefix": "grase"},
-    "fixedEB_mincomb":     {"dir": "eval_bipartition_fixedEB_mincomb",     "prefix": "grase"},
-    "fixedEB_fishercomb":  {"dir": "eval_bipartition_fixedEB_fishercomb",  "prefix": "grase"},
-    "prior":               {"dir": "eval_bipartition_prior",               "prefix": "grase"},
-    "prior_mincomb":       {"dir": "eval_bipartition_prior_mincomb",       "prefix": "grase"},
-    "prior_fishercomb":    {"dir": "eval_bipartition_prior_fishercomb",    "prefix": "grase"},
-    "no_prior":            {"dir": "eval_bipartition_no_prior",            "prefix": "grase"},
-    "no_prior_mincomb":    {"dir": "eval_bipartition_no_prior_mincomb",    "prefix": "grase"},
-    "no_prior_fishercomb": {"dir": "eval_bipartition_no_prior_fishercomb", "prefix": "grase"},
+    "EBfixed":             {"dir": "eval_bipartition_EBfixed",             "prefix": "grase"},
+    "EBfixed_mincomb":     {"dir": "eval_bipartition_EBfixed_mincomb",     "prefix": "grase"},
+    "EBfixed_fishercomb":  {"dir": "eval_bipartition_EBfixed_fishercomb",  "prefix": "grase"},
+    "EBprior":               {"dir": "eval_bipartition_EBprior",               "prefix": "grase"},
+    "EBprior_mincomb":       {"dir": "eval_bipartition_EBprior_mincomb",       "prefix": "grase"},
+    "EBprior_fishercomb":    {"dir": "eval_bipartition_EBprior_fishercomb",    "prefix": "grase"},
+    "MLE":            {"dir": "eval_bipartition_MLE",            "prefix": "grase"},
+    "MLE_mincomb":    {"dir": "eval_bipartition_MLE_mincomb",    "prefix": "grase"},
+    "MLE_fishercomb": {"dir": "eval_bipartition_MLE_fishercomb", "prefix": "grase"},
     "wilcoxon":            {"dir": "eval_bipartition_wilcoxon",            "prefix": "grase"},
     "wilcoxon_mincomb":    {"dir": "eval_bipartition_wilcoxon_mincomb",    "prefix": "grase"},
     "wilcoxon_fishercomb": {"dir": "eval_bipartition_wilcoxon_fishercomb", "prefix": "grase"},
 }
 
 NC2_METHODS = {
-    "fixedEB":             {"dir": "eval_n_choose_2_fixedEB",             "prefix": "grase"},
-    "fixedEB_mincomb":     {"dir": "eval_n_choose_2_fixedEB_mincomb",     "prefix": "grase"},
-    "fixedEB_fishercomb":  {"dir": "eval_n_choose_2_fixedEB_fishercomb",  "prefix": "grase"},
-    "prior":               {"dir": "eval_n_choose_2_prior",               "prefix": "grase"},
-    "prior_mincomb":       {"dir": "eval_n_choose_2_prior_mincomb",       "prefix": "grase"},
-    "prior_fishercomb":    {"dir": "eval_n_choose_2_prior_fishercomb",    "prefix": "grase"},
-    "no_prior":            {"dir": "eval_n_choose_2_no_prior",            "prefix": "grase"},
-    "no_prior_mincomb":    {"dir": "eval_n_choose_2_no_prior_mincomb",    "prefix": "grase"},
-    "no_prior_fishercomb": {"dir": "eval_n_choose_2_no_prior_fishercomb", "prefix": "grase"},
+    "EBfixed":             {"dir": "eval_n_choose_2_EBfixed",             "prefix": "grase"},
+    "EBfixed_mincomb":     {"dir": "eval_n_choose_2_EBfixed_mincomb",     "prefix": "grase"},
+    "EBfixed_fishercomb":  {"dir": "eval_n_choose_2_EBfixed_fishercomb",  "prefix": "grase"},
+    "EBprior":               {"dir": "eval_n_choose_2_EBprior",               "prefix": "grase"},
+    "EBprior_mincomb":       {"dir": "eval_n_choose_2_EBprior_mincomb",       "prefix": "grase"},
+    "EBprior_fishercomb":    {"dir": "eval_n_choose_2_EBprior_fishercomb",    "prefix": "grase"},
+    "MLE":            {"dir": "eval_n_choose_2_MLE",            "prefix": "grase"},
+    "MLE_mincomb":    {"dir": "eval_n_choose_2_MLE_mincomb",    "prefix": "grase"},
+    "MLE_fishercomb": {"dir": "eval_n_choose_2_MLE_fishercomb", "prefix": "grase"},
     "wilcoxon":            {"dir": "eval_n_choose_2_wilcoxon",            "prefix": "grase"},
     "wilcoxon_mincomb":    {"dir": "eval_n_choose_2_wilcoxon_mincomb",    "prefix": "grase"},
     "wilcoxon_fishercomb": {"dir": "eval_n_choose_2_wilcoxon_fishercomb", "prefix": "grase"},
 }
 
 MULTINOMIAL_METHODS = {
-    "plugin_dm_EB": {"dir": "eval_multinomial_plugin_dm", "prefix": "grase"},
+    "plugin_dm_EB": {"dir": "eval_multinomial_EBplugin", "prefix": "grase"},
 }
 
 TOOLS_METHODS = {
@@ -89,15 +89,15 @@ PADJ_THRESHOLDS = [0.01, 0.05, 0.10, 0.20]
 SIM_TYPES_ORDERED = ["ALL", "Background", "DGE", "DTE", "DTU"]
 
 MODEL_LABELS = {
-    "fixedEB":             "EBfixed",
-    "fixedEB_mincomb":     "EBfixed (mincomb)",
-    "fixedEB_fishercomb":  "EBfixed (fishercomb)",
-    "prior":               "EBprior",
-    "prior_mincomb":       "EBprior (mincomb)",
-    "prior_fishercomb":    "EBprior (fishercomb)",
-    "no_prior":            "MLE",
-    "no_prior_mincomb":    "MLE (mincomb)",
-    "no_prior_fishercomb": "MLE (fishercomb)",
+    "EBfixed":             "EBfixed",
+    "EBfixed_mincomb":     "EBfixed (mincomb)",
+    "EBfixed_fishercomb":  "EBfixed (fishercomb)",
+    "EBprior":               "EBprior",
+    "EBprior_mincomb":       "EBprior (mincomb)",
+    "EBprior_fishercomb":    "EBprior (fishercomb)",
+    "MLE":            "MLE",
+    "MLE_mincomb":    "MLE (mincomb)",
+    "MLE_fishercomb": "MLE (fishercomb)",
     "wilcoxon":            "wilcoxon",
     "wilcoxon_mincomb":    "wilcoxon (mincomb)",
     "wilcoxon_fishercomb": "wilcoxon (fishercomb)",
@@ -110,7 +110,7 @@ MODEL_LABELS = {
 
 # Labels for namespaced GrASE keys used in tools comparison
 def _grase_label(ns_key):
-    """bipartition.fixedEB -> 'GrASE bipartition fixedEB'"""
+    """bipartition.EBfixed -> 'GrASE bipartition EBfixed'"""
     parts = ns_key.split(".", 1)
     group = parts[0]
     mkey  = parts[1] if len(parts) > 1 else ""
@@ -118,17 +118,17 @@ def _grase_label(ns_key):
     return f"GrASE {group} {base}"
 
 # Within-group palette: each base model gets a color family (light/medium/dark)
-# fixedEB = blue, prior = red/orange, no_prior = green, wilcoxon = purple
+# EBfixed = blue, EBprior = red/orange, MLE = green, wilcoxon = purple
 WITHIN_PALETTE = {
-    "fixedEB":             "#1f77b4",  # dark blue
-    "fixedEB_mincomb":     "#74b9d9",  # mid blue
-    "fixedEB_fishercomb":  "#aec6e8",  # light blue
-    "prior":               "#d62728",  # dark red
-    "prior_mincomb":       "#eb8a5a",  # mid orange-red
-    "prior_fishercomb":    "#f5a97a",  # light orange
-    "no_prior":            "#2ca02c",  # dark green
-    "no_prior_mincomb":    "#74c274",  # mid green
-    "no_prior_fishercomb": "#a8d5a2",  # light green
+    "EBfixed":             "#1f77b4",  # dark blue
+    "EBfixed_mincomb":     "#74b9d9",  # mid blue
+    "EBfixed_fishercomb":  "#aec6e8",  # light blue
+    "EBprior":               "#d62728",  # dark red
+    "EBprior_mincomb":       "#eb8a5a",  # mid orange-red
+    "EBprior_fishercomb":    "#f5a97a",  # light orange
+    "MLE":            "#2ca02c",  # dark green
+    "MLE_mincomb":    "#74c274",  # mid green
+    "MLE_fishercomb": "#a8d5a2",  # light green
     "wilcoxon":            "#9467bd",  # dark purple
     "wilcoxon_mincomb":    "#ad8dcc",  # mid purple
     "wilcoxon_fishercomb": "#c9b3d9",  # light purple
@@ -647,8 +647,8 @@ def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.05,
               "--best-bipartition / --best-n-choose-2)")
         return
 
-    src_bip = "user-specified" if user_best_bip else "auto-selected"
-    src_nc2 = "user-specified" if user_best_nc2 else "auto-selected"
+    src_bip = "specified" if user_best_bip else "auto-selected"
+    src_nc2 = "specified" if user_best_nc2 else "auto-selected"
 
     print(f"\n  Best bipartition : {best_bip} ({src_bip})")
     print(f"  Best n_choose_2  : {best_nc2} ({src_nc2})")
@@ -713,23 +713,23 @@ def parse_args():
                         choices=["bipartition", "n_choose_2", "cross", "tools"],
                         default=["bipartition", "n_choose_2", "cross", "tools"],
                         help="Which comparison groups to run (default: all)")
-    parser.add_argument("--best-bipartition", default=None,
+    parser.add_argument("--best-bipartition", default="EBfixed",
                         choices=list(BIPARTITION_METHODS.keys()),
                         metavar="METHOD",
-                        help="Bipartition method to use in cross comparison. "
-                             "If omitted, auto-selected by highest micro_f1 at --padj. "
+                        help="Bipartition method to use in cross comparison "
+                             "(default: EBfixed). "
                              "Choices: " + ", ".join(BIPARTITION_METHODS.keys()))
-    parser.add_argument("--best-n-choose-2", default=None,
+    parser.add_argument("--best-n-choose-2", default="EBfixed",
                         choices=list(NC2_METHODS.keys()),
                         metavar="METHOD",
-                        help="N-choose-2 method to use in cross comparison. "
-                             "If omitted, auto-selected by highest micro_f1 at --padj. "
+                        help="N-choose-2 method to use in cross comparison "
+                             "(default: EBfixed). "
                              "Choices: " + ", ".join(NC2_METHODS.keys()))
     parser.add_argument("--best-grase", default=None,
                         choices=list(ALL_GRASE_METHODS.keys()),
                         metavar="GROUP.METHOD",
                         help="GrASE method to include in tools comparison, as "
-                             "group.method (e.g. bipartition.fixedEB). "
+                             "group.method (e.g. bipartition.EBfixed). "
                              "If omitted, auto-selected by highest micro_f1 at --padj "
                              "across all GrASE methods.")
     return parser.parse_args()
