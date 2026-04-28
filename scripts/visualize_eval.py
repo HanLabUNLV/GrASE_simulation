@@ -36,12 +36,12 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 
 BIPARTITION_METHODS = {
-    "EBfixed":             {"dir": "eval_bipartition_EBfixed",             "prefix": "grase"},
-    "EBfixed_mincomb":     {"dir": "eval_bipartition_EBfixed_mincomb",     "prefix": "grase"},
-    "EBfixed_fishercomb":  {"dir": "eval_bipartition_EBfixed_fishercomb",  "prefix": "grase"},
-    "EBprior":               {"dir": "eval_bipartition_EBprior",               "prefix": "grase"},
-    "EBprior_mincomb":       {"dir": "eval_bipartition_EBprior_mincomb",       "prefix": "grase"},
-    "EBprior_fishercomb":    {"dir": "eval_bipartition_EBprior_fishercomb",    "prefix": "grase"},
+    "EBapprox":             {"dir": "eval_bipartition_EBapprox",             "prefix": "grase"},
+    "EBapprox_mincomb":     {"dir": "eval_bipartition_EBapprox_mincomb",     "prefix": "grase"},
+    "EBapprox_fishercomb":  {"dir": "eval_bipartition_EBapprox_fishercomb",  "prefix": "grase"},
+    "EBmap":               {"dir": "eval_bipartition_EBmap",               "prefix": "grase"},
+    "EBmap_mincomb":       {"dir": "eval_bipartition_EBmap_mincomb",       "prefix": "grase"},
+    "EBmap_fishercomb":    {"dir": "eval_bipartition_EBmap_fishercomb",    "prefix": "grase"},
     "MLE":            {"dir": "eval_bipartition_MLE",            "prefix": "grase"},
     "MLE_mincomb":    {"dir": "eval_bipartition_MLE_mincomb",    "prefix": "grase"},
     "MLE_fishercomb": {"dir": "eval_bipartition_MLE_fishercomb", "prefix": "grase"},
@@ -51,12 +51,12 @@ BIPARTITION_METHODS = {
 }
 
 NC2_METHODS = {
-    "EBfixed":             {"dir": "eval_n_choose_2_EBfixed",             "prefix": "grase"},
-    "EBfixed_mincomb":     {"dir": "eval_n_choose_2_EBfixed_mincomb",     "prefix": "grase"},
-    "EBfixed_fishercomb":  {"dir": "eval_n_choose_2_EBfixed_fishercomb",  "prefix": "grase"},
-    "EBprior":               {"dir": "eval_n_choose_2_EBprior",               "prefix": "grase"},
-    "EBprior_mincomb":       {"dir": "eval_n_choose_2_EBprior_mincomb",       "prefix": "grase"},
-    "EBprior_fishercomb":    {"dir": "eval_n_choose_2_EBprior_fishercomb",    "prefix": "grase"},
+    "EBapprox":             {"dir": "eval_n_choose_2_EBapprox",             "prefix": "grase"},
+    "EBapprox_mincomb":     {"dir": "eval_n_choose_2_EBapprox_mincomb",     "prefix": "grase"},
+    "EBapprox_fishercomb":  {"dir": "eval_n_choose_2_EBapprox_fishercomb",  "prefix": "grase"},
+    "EBmap":               {"dir": "eval_n_choose_2_EBmap",               "prefix": "grase"},
+    "EBmap_mincomb":       {"dir": "eval_n_choose_2_EBmap_mincomb",       "prefix": "grase"},
+    "EBmap_fishercomb":    {"dir": "eval_n_choose_2_EBmap_fishercomb",    "prefix": "grase"},
     "MLE":            {"dir": "eval_n_choose_2_MLE",            "prefix": "grase"},
     "MLE_mincomb":    {"dir": "eval_n_choose_2_MLE_mincomb",    "prefix": "grase"},
     "MLE_fishercomb": {"dir": "eval_n_choose_2_MLE_fishercomb", "prefix": "grase"},
@@ -66,7 +66,7 @@ NC2_METHODS = {
 }
 
 MULTINOMIAL_METHODS = {
-    "plugin_dm_EB": {"dir": "eval_multinomial_EBplugin", "prefix": "grase"},
+    "EBplugin": {"dir": "eval_multinomial_EBplugin", "prefix": "grase"},
 }
 
 TOOLS_METHODS = {
@@ -89,19 +89,19 @@ PADJ_THRESHOLDS = [0.01, 0.05, 0.10, 0.20]
 SIM_TYPES_ORDERED = ["ALL", "Background", "DGE", "DTE", "DTU"]
 
 MODEL_LABELS = {
-    "EBfixed":             "EBfixed",
-    "EBfixed_mincomb":     "EBfixed (mincomb)",
-    "EBfixed_fishercomb":  "EBfixed (fishercomb)",
-    "EBprior":               "EBprior",
-    "EBprior_mincomb":       "EBprior (mincomb)",
-    "EBprior_fishercomb":    "EBprior (fishercomb)",
+    "EBapprox":             "EBapprox",
+    "EBapprox_mincomb":     "EBapprox (mincomb)",
+    "EBapprox_fishercomb":  "EBapprox (fishercomb)",
+    "EBmap":               "EBmap",
+    "EBmap_mincomb":       "EBmap (mincomb)",
+    "EBmap_fishercomb":    "EBmap (fishercomb)",
     "MLE":            "MLE",
     "MLE_mincomb":    "MLE (mincomb)",
     "MLE_fishercomb": "MLE (fishercomb)",
     "wilcoxon":            "wilcoxon",
     "wilcoxon_mincomb":    "wilcoxon (mincomb)",
     "wilcoxon_fishercomb": "wilcoxon (fishercomb)",
-    "plugin_dm_EB":        "Multinomial (plugin_dm_EB)",
+    "EBplugin":        "Multinomial (EBplugin)",
     "rmats":               "rMATS",
     "dexseq":              "DEXSeq",
     "saturn":              "Saturn (empirical FDR)",
@@ -118,14 +118,14 @@ def _grase_label(ns_key):
     return f"GrASE {group} {base}"
 
 # Within-group palette: each base model gets a color family (light/medium/dark)
-# EBfixed = blue, EBprior = red/orange, MLE = green, wilcoxon = purple
+# EBapprox = blue, EBmap = red/orange, MLE = green, wilcoxon = purple
 WITHIN_PALETTE = {
-    "EBfixed":             "#1f77b4",  # dark blue
-    "EBfixed_mincomb":     "#74b9d9",  # mid blue
-    "EBfixed_fishercomb":  "#aec6e8",  # light blue
-    "EBprior":               "#d62728",  # dark red
-    "EBprior_mincomb":       "#eb8a5a",  # mid orange-red
-    "EBprior_fishercomb":    "#f5a97a",  # light orange
+    "EBapprox":             "#1f77b4",  # dark blue
+    "EBapprox_mincomb":     "#74b9d9",  # mid blue
+    "EBapprox_fishercomb":  "#aec6e8",  # light blue
+    "EBmap":               "#d62728",  # dark red
+    "EBmap_mincomb":       "#eb8a5a",  # mid orange-red
+    "EBmap_fishercomb":    "#f5a97a",  # light orange
     "MLE":            "#2ca02c",  # dark green
     "MLE_mincomb":    "#74c274",  # mid green
     "MLE_fishercomb": "#a8d5a2",  # light green
@@ -152,22 +152,28 @@ TOOLS_PALETTE = {
 # Data loading
 # ---------------------------------------------------------------------------
 
-def _summary_path(results_dir, methods_dict, method, restricted):
-    cfg  = methods_dict[method]
-    tag  = "restricted_summary" if restricted else "summary"
-    return results_dir / cfg["dir"] / f"{cfg['prefix']}_{tag}_by_simtype.txt"
+def _summary_path(results_dir, methods_dict, method, restricted, gt_level="gtI"):
+    cfg = methods_dict[method]
+    if restricted:
+        fname = f"{cfg['prefix']}_restricted_{gt_level}_summary_by_simtype.txt"
+    else:
+        fname = f"{cfg['prefix']}_{gt_level}_summary_by_simtype.txt"
+    return results_dir / cfg["dir"] / fname
 
 
-def _per_gene_path(results_dir, methods_dict, method, padj, restricted):
-    cfg  = methods_dict[method]
-    tag  = f"restricted_per_gene_padj{padj:.2f}" if restricted else f"per_gene_padj{padj:.2f}"
-    return results_dir / cfg["dir"] / f"{cfg['prefix']}_{tag}.txt"
+def _per_gene_path(results_dir, methods_dict, method, padj, restricted, gt_level="gtI"):
+    cfg = methods_dict[method]
+    if restricted:
+        fname = f"{cfg['prefix']}_restricted_{gt_level}_per_gene_padj{padj:.2f}.txt"
+    else:
+        fname = f"{cfg['prefix']}_{gt_level}_per_gene_padj{padj:.2f}.txt"
+    return results_dir / cfg["dir"] / fname
 
 
-def load_summaries(results_dir, methods_dict, restricted=False):
+def load_summaries(results_dir, methods_dict, restricted=False, gt_level="gtI"):
     frames = []
     for method in methods_dict:
-        p = _summary_path(results_dir, methods_dict, method, restricted)
+        p = _summary_path(results_dir, methods_dict, method, restricted, gt_level)
         if not p.exists():
             print(f"  [warn] missing: {p}")
             continue
@@ -183,11 +189,11 @@ def load_summaries(results_dir, methods_dict, restricted=False):
     return out
 
 
-def load_per_gene(results_dir, methods_dict, restricted=False):
+def load_per_gene(results_dir, methods_dict, restricted=False, gt_level="gtI"):
     frames = []
     for method in methods_dict:
         for padj in PADJ_THRESHOLDS:
-            p = _per_gene_path(results_dir, methods_dict, method, padj, restricted)
+            p = _per_gene_path(results_dir, methods_dict, method, padj, restricted, gt_level)
             if not p.exists():
                 continue
             df = pd.read_csv(p, sep="\t")
@@ -578,7 +584,7 @@ def fig_confusion_counts(summary, methods, palette, labels, out_dir,
 # ---------------------------------------------------------------------------
 
 def run_group(results_dir, methods_dict, palette, labels, group_name,
-              out_base, padj=0.05, panels=True):
+              out_base, padj=0.05, panels=True, gt_level="gtI"):
     out_dir  = out_base / group_name
     out_dir.mkdir(parents=True, exist_ok=True)
     methods  = list(methods_dict.keys())
@@ -589,8 +595,10 @@ def run_group(results_dir, methods_dict, palette, labels, group_name,
         suffix = "_restricted" if restricted else ""
         tag    = "(restricted)" if restricted else "(full)"
         print(f"\n  Loading {group_name} {tag}...")
-        summary  = load_summaries(results_dir, methods_dict, restricted=restricted)
-        per_gene = load_per_gene(results_dir, methods_dict, restricted=restricted)
+        summary  = load_summaries(results_dir, methods_dict, restricted=restricted,
+                                  gt_level=gt_level)
+        per_gene = load_per_gene(results_dir, methods_dict, restricted=restricted,
+                                 gt_level=gt_level)
         if summary.empty:
             print(f"  [skip] no summary data for {group_name} {tag}")
             continue
@@ -632,7 +640,7 @@ def run_group(results_dir, methods_dict, palette, labels, group_name,
 # ---------------------------------------------------------------------------
 
 def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.05,
-              user_best_bip=None, user_best_nc2=None):
+              user_best_bip=None, user_best_nc2=None, gt_level="gtI"):
     out_dir = out_base / "cross"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -655,12 +663,12 @@ def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.05,
 
     key_bip   = f"bipartition ({best_bip})"
     key_nc2   = f"n_choose_2 ({best_nc2})"
-    key_multi = "multinomial (plugin_dm_EB)"
+    key_multi = "multinomial (EBplugin)"
 
     cross_methods = {
         key_bip:   BIPARTITION_METHODS[best_bip],
         key_nc2:   NC2_METHODS[best_nc2],
-        key_multi: MULTINOMIAL_METHODS["plugin_dm_EB"],
+        key_multi: MULTINOMIAL_METHODS["EBplugin"],
     }
     cross_palette = {
         key_bip:   CROSS_PALETTE["bipartition"],
@@ -674,8 +682,10 @@ def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.05,
         suffix = "_restricted" if restricted else ""
         tag    = "(restricted)" if restricted else "(full)"
         print(f"\n  Loading cross {tag}...")
-        summary  = load_summaries(results_dir, cross_methods, restricted=restricted)
-        per_gene = load_per_gene(results_dir, cross_methods, restricted=restricted)
+        summary  = load_summaries(results_dir, cross_methods, restricted=restricted,
+                                  gt_level=gt_level)
+        per_gene = load_per_gene(results_dir, cross_methods, restricted=restricted,
+                                 gt_level=gt_level)
         if summary.empty:
             print(f"  [skip] no data for cross {tag}")
             continue
@@ -713,18 +723,23 @@ def parse_args():
                         choices=["bipartition", "n_choose_2", "cross", "tools"],
                         default=["bipartition", "n_choose_2", "cross", "tools"],
                         help="Which comparison groups to run (default: all)")
-    parser.add_argument("--best-bipartition", default="EBfixed",
+    parser.add_argument("--best-bipartition", default="EBapprox",
                         choices=list(BIPARTITION_METHODS.keys()),
                         metavar="METHOD",
                         help="Bipartition method to use in cross comparison "
-                             "(default: EBfixed). "
+                             "(default: EBapprox). "
                              "Choices: " + ", ".join(BIPARTITION_METHODS.keys()))
-    parser.add_argument("--best-n-choose-2", default="EBfixed",
+    parser.add_argument("--best-n-choose-2", default="EBapprox",
                         choices=list(NC2_METHODS.keys()),
                         metavar="METHOD",
                         help="N-choose-2 method to use in cross comparison "
-                             "(default: EBfixed). "
+                             "(default: EBapprox). "
                              "Choices: " + ", ".join(NC2_METHODS.keys()))
+    parser.add_argument("--gt-level", default="gtI",
+                        choices=["gtI", "gtII", "gtIII"],
+                        help="Ground truth DTE stringency level to plot "
+                             "(default: gtI). gtI=all changed-tx exons, "
+                             "gtII=shared+unique, gtIII=unique only.")
     parser.add_argument("--best-grase", default=None,
                         choices=list(ALL_GRASE_METHODS.keys()),
                         metavar="GROUP.METHOD",
@@ -741,9 +756,12 @@ def main():
     out_base    = Path(args.out)
     out_base.mkdir(parents=True, exist_ok=True)
 
+    gt_level = args.gt_level
+
     print(f"Results dir : {results_dir}")
     print(f"Output dir  : {out_base}")
     print(f"Primary padj: {args.padj}")
+    print(f"GT level    : {gt_level}")
 
     bip_palette   = {m: WITHIN_PALETTE[m] for m in BIPARTITION_METHODS}
     nc2_palette   = {m: WITHIN_PALETTE[m] for m in NC2_METHODS}
@@ -758,14 +776,14 @@ def main():
     if "bipartition" in groups:
         print("\n=== Bipartition ===")
         summary_bip = run_group(results_dir, BIPARTITION_METHODS, bip_palette, bip_labels,
-                                "bipartition", out_base, padj=args.padj)
+                                "bipartition", out_base, padj=args.padj, gt_level=gt_level)
 
     # 2. N-choose-2 comparison
     summary_nc2 = pd.DataFrame()
     if "n_choose_2" in groups:
         print("\n=== N-choose-2 ===")
         summary_nc2 = run_group(results_dir, NC2_METHODS, nc2_palette, nc2_labels,
-                                "n_choose_2", out_base, padj=args.padj)
+                                "n_choose_2", out_base, padj=args.padj, gt_level=gt_level)
 
     # 3. Tools comparison (rMATS / Saturn + best GrASE)
     if "tools" in groups:
@@ -776,7 +794,8 @@ def main():
             best_grase_key = args.best_grase
             src = "user-specified"
         else:
-            all_summary = load_summaries(results_dir, ALL_GRASE_METHODS, restricted=False)
+            all_summary = load_summaries(results_dir, ALL_GRASE_METHODS, restricted=False,
+                                     gt_level=gt_level)
             if all_summary.empty:
                 best_grase_key = None
                 print("  [warn] could not load any GrASE summaries for auto-selection")
@@ -797,7 +816,7 @@ def main():
                                    **tools_labels}
 
         run_group(results_dir, tools_methods_aug, tools_palette_aug, tools_labels_aug,
-                  "tools", out_base, padj=args.padj, panels=False)
+                  "tools", out_base, padj=args.padj, panels=False, gt_level=gt_level)
 
     # 4. Cross comparison: best bipartition vs best n_choose_2 vs multinomial
     if "cross" in groups:
@@ -805,7 +824,8 @@ def main():
         run_cross(results_dir, summary_bip, summary_nc2,
                   out_base=out_base, padj=args.padj,
                   user_best_bip=args.best_bipartition,
-                  user_best_nc2=args.best_n_choose_2)
+                  user_best_nc2=args.best_n_choose_2,
+                  gt_level=gt_level)
 
     print("\nDone.")
 
