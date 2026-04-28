@@ -62,7 +62,7 @@ padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
-#  helpers 
+#  helpers
 
 parse_exparts <- function(x) {
   if (is.na(x) || trimws(x) == "" || x == "NA") return(character(0))
@@ -72,6 +72,28 @@ parse_exparts <- function(x) {
 f1_safe <- function(p, r) {
   if (is.na(p) || is.na(r) || (p + r) == 0) NA_real_
   else 2 * p * r / (p + r)
+}
+
+# Return GT-positive exonic parts for one gene's GT data frame.
+# For DTE genes, dte_gt_level controls stringency:
+#   "i"   -- all exons of changed transcripts (group == "changed")
+#   "ii"  -- minus constitutive exons (dte_gt_level %in% c("shared","unique"))
+#   "iii" -- unique to changed transcripts only (dte_gt_level == "unique")
+# For non-DTE genes the level is ignored; group == "changed" is always used.
+# gt_neg is always group == "negative" at every level -- exons removed from
+# gt_pos at levels ii/iii (constitutive, shared) are excluded from the
+# evaluation entirely (not counted as FP when detected).
+get_gt_pos <- function(gt_gene, dte_gt_level = "i") {
+  is_dte <- !is.null(gt_gene$sim_type) && any(gt_gene$sim_type == "DTE")
+  if (!is_dte || dte_gt_level == "i") {
+    return(unique(gt_gene$exonic_part[gt_gene$group == "changed"]))
+  }
+  if (!"dte_gt_level" %in% names(gt_gene))
+    stop("dte_gt_level column missing -- rerun infer_diff_exons_gt.R")
+  lvl <- gt_gene$dte_gt_level
+  keep <- if (dte_gt_level == "ii") lvl %in% c("shared", "unique")
+          else                      lvl == "unique"   # "iii"
+  unique(gt_gene$exonic_part[!is.na(keep) & keep])
 }
 
 #  load test results 
@@ -194,8 +216,8 @@ per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, functi
                       stringsAsFactors = FALSE))
   }
 
-  gt_pos <- unique(gt_gene$exonic_part[gt_gene$group == "changed"]) # GT positive exonic parts
-  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"]) # GT negative exonic parts
+  gt_pos <- get_gt_pos(gt_gene, dte_gt_level = "i")   # level i for per-event labeling
+  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"])
 
   data.frame(gene = gene, event = event, comparison = row$comparison,
              setdiff = combined_setdiff,
@@ -237,8 +259,8 @@ add_all_row <- function(summary_df) {
 }
 
 eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRUE,
-                       gt_col = "group") {
-  cat(sprintf("  [%s]\n", label))
+                              dte_gt_level = "i") {
+  cat(sprintf("  [%s  GT level %s]\n", label, dte_gt_level))
   all_thresholds <- list()
 
   for (thr in padj_thresholds) {
@@ -273,11 +295,8 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
       if (!is.null(testable_by_gene) &&
           (is.null(testable) || length(testable) == 0)) return(NULL)
 
-      # Use gt_col if present; fall back to "group" for old GT files
-      col <- if (gt_col %in% names(gt_gene)) gt_col else "group"
-      gt_pos <- unique(gt_gene$exonic_part[
-        gt_gene[[col]] == "changed"])
-      gt_neg <- unique(gt_gene$exonic_part[gt_gene[[col]] == "negative"])
+      gt_pos <- get_gt_pos(gt_gene, dte_gt_level)
+      gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"])
       if (!is.null(testable)) {
         if (restrict_pos) gt_pos <- intersect(gt_pos, testable)
         gt_neg <- intersect(gt_neg, testable)
@@ -352,24 +371,28 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
   list(thresholds = all_thresholds, summary = summary1)
 }
 
-# Full evaluation (total space): universe = all GT exons
-eval_full  <- eval_exonic_parts("grase")
-# Coverage-restricted: universe = GrASE-testable exons (setdiff only)
-eval_restr <- eval_exonic_parts("grase_restricted",
-                        testable_by_gene = grase_testable_by_gene,
-                        restrict_pos = TRUE)
+for (lv in c("i", "ii", "iii")) {
+  lv_tag <- paste0("gt", toupper(lv))
+  # Full evaluation (total space): universe = all GT exons
+  eval_full  <- eval_exonic_parts(sprintf("grase_%s",            lv_tag),
+                                  dte_gt_level = lv)
+  # Coverage-restricted: universe = GrASE-testable exons (setdiff only)
+  eval_restr <- eval_exonic_parts(sprintf("grase_restricted_%s", lv_tag),
+                                  testable_by_gene = grase_testable_by_gene,
+                                  restrict_pos     = TRUE,
+                                  dte_gt_level     = lv)
 
+  cat(sprintf("\n=== Summary (full GT level %s, micro metrics) ===\n", lv))
+  print(as.data.frame(eval_full$summary %>%
+    select(sim_type, padj_thr, n_genes,
+           micro_precision, micro_recall, micro_f1,
+           total_TP, total_FP, total_FN)))
 
-cat("\n=== Summary (full GT, micro metrics) ===\n")
-print(as.data.frame(eval_full$summary %>%
-  select(sim_type, padj_thr, n_genes,
-         micro_precision, micro_recall, micro_f1,
-         total_TP, total_FP, total_FN)))
-
-cat("\n=== Summary (restricted to GrASE-testable exons) ===\n")
-print(as.data.frame(eval_restr$summary %>%
-  select(sim_type, padj_thr, n_genes,
-         micro_precision, micro_recall, micro_f1,
-         total_TP, total_FP, total_FN)))
+  cat(sprintf("\n=== Summary (restricted, GT level %s) ===\n", lv))
+  print(as.data.frame(eval_restr$summary %>%
+    select(sim_type, padj_thr, n_genes,
+           micro_precision, micro_recall, micro_f1,
+           total_TP, total_FP, total_FN)))
+}
 
 cat(sprintf("\nResults written to: %s\n", out_dir))
