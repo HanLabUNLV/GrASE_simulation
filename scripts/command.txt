@@ -9,6 +9,10 @@
 # build ground truth exonic part labels from simulate.rda + DEXSeq GFF
 #Rscript ~/GrASE/scripts/infer_diff_exons_gt.R ~/GrASE_simulation/dexseq.gff/ ~/GrASE_simulation/swimdown/simulate/data/simulate.rda ~/GrASE_simulation/results/sim_exon_info
 
+
+
+
+
 # ============================================================
 # bipartition
 # ============================================================
@@ -96,6 +100,8 @@ Rscript /mnt/data1/home/mirahan/GrASE_simulation/scripts/evaluate_bipartition_te
   /mnt/data1/home/mirahan/GrASE_simulation/results/sim_exon_info \
   /mnt/data1/home/mirahan/GrASE_simulation/results/eval_bipartition_wilcoxon_fishercomb \
   /mnt/data1/home/mirahan/GrASE_simulation/swimdown/simulate/data/simulate.rda
+
+
 
 # ============================================================
 # n_choose_2
@@ -233,4 +239,4 @@ python visualize_eval.py --groups bipartition
 python visualize_eval.py --groups n_choose_2
 python visualize_eval.py --groups cross --best-n-choose-2 EBapprox  --best-bipartition EBapprox
 python visualize_eval.py --groups tools --best-grase bipartition.EBapprox 
-
+#

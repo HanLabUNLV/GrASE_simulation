@@ -1,22 +1,32 @@
 #!/usr/bin/env Rscript
 
-# scripts/evaluate_multinomial_test.R
+# scripts/evaluate_bipartition_sj_test.R
 #
-# Evaluates GrASE multinomial statistical test results against simulation
+# SJ-specific fork of evaluate_bipartition_test.R.
+# Differences from the exon-based version:
+# 1. Only the d1d2 comparison (diff2_vs_diff1) is used. d1r and d2r are
+#    dropped: junction "ref" counts are noisier than exon body counts and the
+#    lfc_diff_net filter does not sufficiently suppress DTE confounding for
+#    junction tests.
+# 2. d1d2 is credited to the union of setdiff1 and setdiff2 (not setdiff2
+#    alone) because path assignment is arbitrary.
+# 3. lfc_diff_net filter is not applied to d1d2 (direction-agnostic).
+#
+# Evaluates GrASE SJ bipartition statistical test results against simulation
 # ground truth.
 #
 # Input test results file columns (tab-separated):
-#   gene, event, LRT, p.value, model, effect_size, padj,
-#   source, sink, ref_ex_part,
-#   setdiff1, transcripts1, path1, ..., setdiff20, transcripts20, path20,
-#   setdiff1_mean, ..., setdiff7_mean
+#   gene, event, LRT, p.value, model, phi, effect_size, padj,
+#   source, sink, ref_ex_part, setdiff1, setdiff2,
+#   transcripts1, transcripts2, path1, path2,
+#   ref_mean, diff1_mean, diff2_mean, diff_mean, which, setdiff
 #
 # Ground truth (gt_dir, from infer_diff_exons_gt.R):
 #   gene.exonic_parts_fc.txt   exonic_part, fold_change, group, transcripts,
 #                               changed_tx, alt_tx, source, sink
 #
 # Exonic part detection:
-#   Detected positive = exonic parts in setdiffN columns of events with padj < threshold
+#   Detected positive = exonic parts in `setdiff` column with padj < threshold
 #   GT positive       = exonic parts labelled "changed"
 #   GT negative       = exonic parts labelled "negative"
 #   Reports TP/FP/FN/TN, precision, recall, F1 at multiple padj thresholds
@@ -26,17 +36,19 @@
 #     Restricted           : universe = only GrASE-testable exons (setdiff)
 #
 # Usage:
-#   Rscript evaluate_multinomial_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>
+#   Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]
 #
 #   <test_results> may be a single file path or a comma-separated list of paths.
-#   When multiple files are given they are combined row-wise and the minimum
-#   padj is taken per (gene, event).
+#   When multiple files are given they are combined: the row with minimum
+#   padj is kept per (gene, setdiff).
+#   <delta>        lfc_diff_net threshold (default 0); significant calls also
+#                  require lfc_diff_net > delta (NA lfc_diff_net rows pass).
 #
 # Outputs:
-#   grase_per_gene_padj<thr>.txt              per-gene metrics (full GT)
-#   grase_restricted_per_gene_padj<thr>.txt   per-gene metrics (restricted)
-#   grase_summary_by_simtype.txt              P/R/F1 by sim_type (full GT)
-#   grase_restricted_summary_by_simtype.txt   same, restricted
+#   grase_per_gene_padj<thr>.txt                  per-gene metrics (full GT)
+#   grase_restricted_per_gene_padj<thr>.txt       per-gene metrics (restricted)
+#   grase_summary_by_simtype.txt                  P/R/F1 by sim_type (full GT)
+#   grase_restricted_summary_by_simtype.txt       same, restricted
 
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(parallel))
@@ -44,7 +56,7 @@ n_cores <- 30
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  cat("Usage: Rscript evaluate_multinomial_test.R <test_results> <gt_dir> <out_dir> <simulate_rda>\n")
+  cat("Usage: Rscript evaluate_bipartition_test.R <test_results> <gt_dir> <out_dir> <simulate_rda> [<delta>]\n")
   quit(save = "no", status = 1)
 }
 
@@ -52,6 +64,9 @@ test_files  <- trimws(unlist(strsplit(args[1], ",")))
 gt_dir      <- args[2]
 out_dir     <- args[3]
 sim_rda     <- args[4]
+delta       <- if (length(args) >= 5) as.numeric(args[5]) else 0
+
+cat(sprintf("lfc_diff_net delta = %g\n", delta))
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -91,56 +106,44 @@ get_gt_pos <- function(gt_gene, dte_gt_level = "i") {
   unique(gt_gene$exonic_part[!is.na(keep) & keep])
 }
 
-# Combine all setdiffN columns (N = 1..20) per row into a single comma-separated
-# string, excluding NA and "no_exon_part" values.
-combine_setdiffs <- function(df) {
-  setdiff_cols <- grep("^setdiff\\d+$", names(df), value = TRUE)
-  if (length(setdiff_cols) == 0) {
-    stop("No setdiffN columns found in test results file.")
-  }
-  apply(df[, setdiff_cols, drop = FALSE], 1, function(row) {
-    vals <- row[!is.na(row) & row != "no_exon_part" & nchar(trimws(row)) > 0]
-    if (length(vals) == 0) NA_character_
-    else paste(unique(trimws(unlist(strsplit(vals, ",")))), collapse = ",")
-  })
-}
-
-#  load test results
+#  load test results 
 
 cat(sprintf("loading %d test file(s)...\n", length(test_files)))
 tests_list <- lapply(test_files, function(f) {
   cat(sprintf("  %s\n", basename(f)))
   read.table(f, header = TRUE, sep = "\t", stringsAsFactors = FALSE,
              quote = "", comment.char = "", na.strings = c("NA", ""),
-             colClasses = c(source = "character", sink = "character"))
+             colClasses = c(source = "character", sink = "character",
+                            comparison = "character",
+                            setdiff1 = "character", setdiff2 = "character",
+                            setdiff_union = "character"))
 })
 tests <- bind_rows(tests_list)
 cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
-# Build a single 'setdiff' column = union of all non-NA, non-"no_exon_part" setdiffN values
-tests$setdiff <- combine_setdiffs(tests)
+# SJ pipeline uses d1d2 only; drop d1r/d2r rows.
+tests <- tests[tests$comparison == "diff2_vs_diff1" | is.na(tests$comparison), ]
+cat(sprintf("  %d rows after filtering to d1d2 only\n", nrow(tests)))
 
-# When multiple files are combined, keep the row with minimum padj per (gene, event)
-if (length(test_files) > 1) {
-  tests <- tests %>%
-    group_by(gene, event) %>%
-    slice_min(padj, n = 1, with_ties = FALSE) %>%
-    ungroup()
-}
+# Each row is one comparison (d1d2 only for SJ).
+tests_eval <- tests %>%
+  select(gene, event, comparison, padj, lfc_diff_net, setdiff1, setdiff2,
+         any_of("setdiff_union"))
 
-tests_eval <- tests[, c("gene", "event", "setdiff", "padj")]
-
-# Build per-gene set of exonic parts GrASE explicitly tested (all events,
-# regardless of significance)
+# build per-gene set of exonic parts grase explicitly tested (setdiff only)
+# setdiff may be a comma-separated list of exonic parts; split before deduplicating
 grase_testable_by_gene <- lapply(
-  split(tests_eval$setdiff, tests_eval$gene),
-  function(x) unique(unlist(lapply(x[!is.na(x) & nchar(x) > 0], parse_exparts)))
+  split(tests_eval %>% select(setdiff1, setdiff2), tests_eval$gene),
+  function(df) {
+    all_setdiffs <- c(df$setdiff1, df$setdiff2)
+    unique(unlist(lapply(all_setdiffs[!is.na(all_setdiffs) & nchar(all_setdiffs) > 0], parse_exparts)))
+  }
 )
-cat(sprintf("  grase: %d genes with testable exonic parts\n",
+cat(sprintf("  grase: %d genes with testable exonic parts (setdiff only)\n",
             length(grase_testable_by_gene)))
 
-#  load simulation gene type labels
+#  load simulation gene type labels 
 
 cat("loading simulate.rda...\n")
 dge_genes <- dte_genes <- dtu_genes <- character(0)
@@ -162,7 +165,7 @@ get_sim_type <- function(gene) {
   return("Background")
 }
 
-#  load ground truth
+#  load ground truth 
 
 cat("loading ground truth exonic_parts_fc files...\n")
 gt_fc_files <- list.files(gt_dir, pattern = "\\.exonic_parts_fc\\.txt$",
@@ -171,7 +174,7 @@ gt_genes_available <- sub("\\.exonic_parts_fc\\.txt$", "",
                           basename(gt_fc_files))
 
 test_genes <- unique(tests$gene)
-eval_genes <- gt_genes_available
+eval_genes <- gt_genes_available   # all gt genes (total-space universe)
 cat(sprintf("  gt genes: %d  |  test genes: %d  |  gt-only (untested): %d\n",
             length(gt_genes_available), length(test_genes),
             length(setdiff(gt_genes_available, test_genes))))
@@ -190,9 +193,70 @@ cat(sprintf("  loaded %d exonic part records across %d genes\n",
             nrow(gt_all), length(unique(gt_all$gene))))
 
 gt_all$sim_type <- sapply(gt_all$gene, get_sim_type)
+
+# pre-split gt_all by gene for o(1) lookup 
 gt_by_gene <- split(gt_all, gt_all$gene)
 
-#  exonic part detection
+# per-event lfc_diff_net vs TP/FP labeling
+
+cat("\nWriting per-event lfc_diff_net labels...\n")
+per_event_rows <- mclapply(seq_len(nrow(tests_eval)), mc.cores = n_cores, function(i) {
+  row <- tests_eval[i, ]
+  gene <- row$gene
+  event <- row$event # Get event ID
+  gt_gene <- gt_by_gene[[gene]]
+  sim_type <- get_sim_type(gene)
+
+  # Resolve the exonic parts to check for overlaps (SJ-specific rules):
+  # - combination files: use setdiff_union.
+  # - diff1_vs_ref  -> setdiff1 only.
+  # - diff2_vs_ref  -> setdiff2 only.
+  # - diff2_vs_diff1 -> union of setdiff1 and setdiff2.
+  if (!is.null(row$setdiff_union) && !is.na(row$setdiff_union) && nchar(row$setdiff_union) > 0) {
+    combined_setdiff <- row$setdiff_union
+    event_setdiffs   <- row$setdiff_union
+  } else if (!is.null(row$comparison) && !is.na(row$comparison) &&
+             row$comparison == "diff2_vs_diff1") {
+    raw <- c(row$setdiff1, row$setdiff2)
+    raw <- raw[!is.na(raw) & nchar(raw) > 0]
+    combined_setdiff <- if (length(raw) > 0) paste(raw, collapse = ",") else NA_character_
+    event_setdiffs   <- raw
+  } else {
+    sd <- if (!is.null(row$comparison) && !is.na(row$comparison) &&
+              row$comparison == "diff1_vs_ref") row$setdiff1 else row$setdiff2
+    combined_setdiff <- if (!is.na(sd) && nchar(sd) > 0) sd else NA_character_
+    event_setdiffs   <- if (!is.na(sd) && nchar(sd) > 0) sd else character(0)
+  }
+  ex <- unique(unlist(lapply(
+    event_setdiffs[!is.na(event_setdiffs) & nchar(event_setdiffs) > 0], parse_exparts)))
+
+  if (is.null(gt_gene) || nrow(gt_gene) == 0) {
+    return(data.frame(gene = gene, event = event, comparison = row$comparison,
+                      setdiff = combined_setdiff,
+                      padj = row$padj, lfc_diff_net = row$lfc_diff_net,
+                      sim_type = sim_type,
+                      overlaps_gt_pos = NA, overlaps_gt_neg = NA,
+                      stringsAsFactors = FALSE))
+  }
+
+  gt_pos <- get_gt_pos(gt_gene, dte_gt_level = "i")   # level i for per-event labeling
+  gt_neg <- unique(gt_gene$exonic_part[gt_gene$group == "negative"])
+
+  data.frame(gene = gene, event = event, comparison = row$comparison,
+             setdiff = combined_setdiff,
+             padj = row$padj, lfc_diff_net = row$lfc_diff_net,
+             sim_type = sim_type,
+             overlaps_gt_pos = any(ex %in% gt_pos),
+             overlaps_gt_neg = any(ex %in% gt_neg),
+             stringsAsFactors = FALSE)
+})
+per_event_df <- bind_rows(per_event_rows)
+write.table(per_event_df,
+            file.path(out_dir, "per_event_lfc_diff_net.txt"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+cat(sprintf("  wrote %d rows to per_event_lfc_diff_net.txt\n", nrow(per_event_df)))
+
+# exonic part detection
 
 cat("\nRunning exonic part detection...\n")
 
@@ -225,8 +289,45 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
   for (thr in padj_thresholds) {
     cat(sprintf("    padj < %.2f\n", thr))
 
-    sig_rows    <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr, ]
-    det_by_gene <- split(sig_rows$setdiff, sig_rows$gene)
+    # d1d2 is direction-agnostic (path assignment is arbitrary), so lfc_diff_net
+    # filter does not apply to diff2_vs_diff1 rows.
+    sig_rows <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
+                             (tests_eval$comparison == "diff2_vs_diff1" |
+                              is.na(tests_eval$lfc_diff_net) |
+                              tests_eval$lfc_diff_net > delta), ]
+    
+    # Detected exonic parts (SJ-specific rules):
+    # - combination files (setdiff_union present): use the precomputed union.
+    # - diff1_vs_ref  -> setdiff1
+    # - diff2_vs_ref  -> setdiff2
+    # - diff2_vs_diff1 (d1d2) -> union of setdiff1 and setdiff2: the test
+    #   detects differential bipartition usage regardless of which path carries
+    #   the distinct exon.
+    has_union <- "setdiff_union" %in% names(sig_rows)
+    det_by_gene <- lapply(
+      split(sig_rows %>% select(comparison, setdiff1, setdiff2,
+                                any_of("setdiff_union")), sig_rows$gene),
+      function(df) {
+        parts <- if (has_union) {
+          df$setdiff_union
+        } else {
+          vapply(seq_len(nrow(df)), function(j) {
+            comp <- df$comparison[j]
+            sd1  <- df$setdiff1[j]
+            sd2  <- df$setdiff2[j]
+            if (comp == "diff1_vs_ref")
+              return(if (!is.na(sd1) && nchar(sd1) > 0) sd1 else NA_character_)
+            if (comp == "diff2_vs_ref")
+              return(if (!is.na(sd2) && nchar(sd2) > 0) sd2 else NA_character_)
+            # diff2_vs_diff1: union of both sides
+            ex <- unique(c(parse_exparts(sd1), parse_exparts(sd2)))
+            if (length(ex) == 0L) return(NA_character_)
+            paste(ex, collapse = ",")
+          }, character(1L))
+        }
+        unique(unlist(lapply(parts[!is.na(parts) & nchar(parts) > 0], parse_exparts)))
+      }
+    )
 
     rows <- mclapply(eval_genes, mc.cores = n_cores, function(gene) {
       gt_gene <- gt_by_gene[[gene]]
@@ -269,12 +370,13 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
         stringsAsFactors = FALSE
       )
     })
-
     grase_df <- bind_rows(rows[!sapply(rows, is.null)])
+
     all_thresholds[[as.character(thr)]] <- grase_df
 
     write.table(grase_df,
-                file.path(out_dir, sprintf("%s_per_gene_padj%.2f.txt", label, thr)),
+                file.path(out_dir, sprintf("%s_per_gene_padj%.2f.txt",
+                                          label, thr)),
                 sep = "\t", quote = FALSE, row.names = FALSE)
   }
 
