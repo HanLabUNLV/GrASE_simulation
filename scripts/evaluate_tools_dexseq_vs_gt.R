@@ -1,37 +1,33 @@
 #!/usr/bin/env Rscript
 
-# scripts/evaluate_tools_vs_gt.R
+# scripts/evaluate_tools_dexseq_vs_gt.R
 #
-# Compare rMATS and DEXSeq exonic-part detection accuracy against simulation
-# ground truth.  Uses the same GT as evaluate_bipartition_test.R so results
-# are directly comparable to GrASE.
+# Evaluate DEXSeq (exon-bin GT) and rMATS (junction-level GT) against
+# simulation ground truth.
 #
-# rMATS:
-#   Event files : <rmats_dir>/{SE,A3SS,A5SS,RI,MXE}.MATS.JCEC.txt
-#   Mapping     : <map_dir>/combined.fromGTF.{SE,A3SS,A5SS,RI}.txt
-#                 columns: ID (rMATS event ID), GeneID, DexseqFragment
-#                          (comma-sep exonic parts of the alternative exon)
-#   Significance: FDR column
+# rMATS: evaluated using junction-level GT from infer_junctions_gt.R
+#   Event files : <rmats_dir>/{SE,A3SS,A5SS,RI}.MATS.JCEC.txt
+#   Junction GT : <junction_gt_file> (sim_junction_gt.txt)
 #
 # DEXSeq:
-#   File        : <dexseq_file>
-#                 ids column format: "ENSG...:Exxx"  (gene:exonic_part)
-#   Significance: empirical_FDR column (falls back to regular_FDR)
-#
-# Ground truth (gt_dir, from infer_diff_exons_simulation.R):
-#   gene.exonic_parts_fc.txt   columns: gene, exonic_part, group
-#                                       group in {changed, negative}
+#   File        : <dexseq_file>  (groupID:featureID, padj column)
 #
 # Usage:
-#   Rscript evaluate_tools_vs_gt.R \
-#     <gt_dir> <rmats_dir> <map_dir> <dexseq_file> <out_dir> <simulate_rda>
+#   Rscript evaluate_tools_dexseq_vs_gt.R \
+#     <gt_dir> <rmats_dir> <map_dir> <dexseq_file> <out_dir> <simulate_rda> \
+#     [junction_gt_file]
+#   map_dir is unused but kept for positional compatibility.
+#   junction_gt_file defaults to <results_dir>/sim_junction_gt.txt.
 #
 # Outputs (written to out_dir):
-#   {rmats,dexseq}_per_gene_padj<thr>.txt            per-gene metrics (full GT)
-#   {rmats,dexseq}_restricted_per_gene_padj<thr>.txt per-gene metrics (GT restricted to each tool's testable exons)
-#   {rmats,dexseq}_summary_by_simtype.txt            aggregated by sim_type x threshold (full GT)
-#   {rmats,dexseq}_restricted_summary_by_simtype.txt same, restricted to each tool's testable exons
-#   comparison_summary.txt                           side-by-side comparison (rMATS, rMATS_restricted, DEXSeq, DEXSeq_restricted)
+#   rmats_junctiongt_per_gene_padj<thr>.txt              per-gene (full junction GT)
+#   rmats_junctiongt_restricted_per_gene_padj<thr>.txt   per-gene (rMATS-tested events only)
+#   rmats_junctiongt_summary_by_simtype.txt              aggregated (full)
+#   rmats_junctiongt_restricted_summary_by_simtype.txt   aggregated (restricted)
+#   dexseq_per_gene_padj<thr>.txt                        per-gene (full exon-bin GT)
+#   dexseq_restricted_per_gene_padj<thr>.txt             per-gene (DEXSeq-testable only)
+#   dexseq_summary_by_simtype.txt                        aggregated (full)
+#   dexseq_restricted_summary_by_simtype.txt             aggregated (restricted)
 
 suppressPackageStartupMessages(library(dplyr))
 
@@ -50,12 +46,14 @@ if (length(args) < 6) {
   quit(save = "no", status = 1)
 }
 
-gt_dir      <- args[1]
-rmats_dir   <- args[2]
-map_dir     <- args[3]
-dexseq_file <- args[4]
-out_dir     <- args[5]
-sim_rda     <- args[6]
+gt_dir           <- args[1]
+rmats_dir        <- args[2]
+map_dir          <- args[3]
+dexseq_file      <- args[4]
+out_dir          <- args[5]
+sim_rda          <- args[6]
+junction_gt_file <- if (length(args) >= 7) args[7] else
+  file.path(dirname(args[5]), "sim_junction_gt.txt")
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -183,87 +181,195 @@ gt_by_gene <- split(gt_all, gt_all$gene)
 cat(sprintf("  %d exonic part records across %d GT genes\n",
             nrow(gt_all), length(gt_by_gene)))
 
-# build rMATS exonic-part call table 
+# junction-level GT evaluation for rMATS (runs first)
 
-cat("\nBuilding rMATS exonic-part call table...\n")
+rmats_junctiongt_per_gene            <- NULL
+rmats_junctiongt_restricted_per_gene <- NULL
 
-# Event types that have mapping files (MXE omitted no mapping available)
-rmats_etypes <- c("SE", "A3SS", "A5SS", "RI")
+if (file.exists(junction_gt_file)) {
+  cat(sprintf("\nLoading junction GT: %s\n", junction_gt_file))
+  jgt <- read.table(junction_gt_file, header = TRUE, sep = "\t",
+                    stringsAsFactors = FALSE)
+  # exclude untestable events: either side empty -> PSI constant/undefined,
+  # cannot be scored (not a true negative).
+  jgt <- jgt[!(jgt$n_inc_tx == 0 | jgt$n_skip_tx == 0), ]
+  cat(sprintf("  %d testable events (%d GT-positive, %d GT-negative)\n",
+              nrow(jgt), sum(jgt$gt_positive), sum(!jgt$gt_positive)))
 
-rmats_rows <- list()
-
-for (etype in rmats_etypes) {
-  map_path   <- file.path(map_dir, paste0("combined.fromGTF.", etype, ".txt"))
-  rmats_path <- file.path(rmats_dir, paste0(etype, ".MATS.JCEC.txt"))
-
-  if (!file.exists(map_path)) {
-    message(sprintf("  Skipping %s: mapping file not found", etype))
-    next
-  }
-  if (!file.exists(rmats_path)) {
-    message(sprintf("  Skipping %s: rMATS result file not found", etype))
-    next
+  csv_mean <- function(x) {
+    v <- suppressWarnings(as.numeric(strsplit(x, ",")[[1]]))
+    if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE)
   }
 
-  map_df <- read.table(map_path, header = TRUE, sep = "\t",
-                       stringsAsFactors = FALSE, quote = "")
-  # Only rows with a real exonic-part mapping
-  map_df <- map_df[!is.na(map_df$DexseqFragment) &
-                     map_df$DexseqFragment != "NA" &
-                     map_df$DexseqFragment != "", ]
-  if (nrow(map_df) == 0) {
-    message(sprintf("  Skipping %s: no exonic-part mappings in file", etype))
-    next
-  }
+  rmats_fdr_rows <- list()
+  for (etype in c("SE", "A3SS", "A5SS", "RI")) {
+    f <- file.path(rmats_dir, paste0(etype, ".MATS.JCEC.txt"))
+    if (!file.exists(f)) next
+    df <- read.table(f, header = TRUE, sep = "\t",
+                     stringsAsFactors = FALSE, quote = "")
+    names(df) <- make.unique(names(df))
+    df$GeneID <- gsub('"', '', df$GeneID)
 
-  rmats_df <- read.table(rmats_path, header = TRUE, sep = "\t",
-                          stringsAsFactors = FALSE, quote = "")
-  # Deduplicate the duplicate ID column (rMATS has ID twice)
-  names(rmats_df) <- make.unique(names(rmats_df))
-  rmats_df$GeneID <- gsub('"', '', rmats_df$GeneID)  # strip surrounding quotes
+    ijc1 <- sapply(df$IJC_SAMPLE_1, csv_mean)
+    sjc1 <- sapply(df$SJC_SAMPLE_1, csv_mean)
+    ijc2 <- sapply(df$IJC_SAMPLE_2, csv_mean)
+    sjc2 <- sapply(df$SJC_SAMPLE_2, csv_mean)
+    avg_count1 <- ijc1 + sjc1
+    avg_count2 <- ijc2 + sjc2
+    psi1 <- sapply(df$IncLevel1, csv_mean)
+    psi2 <- sapply(df$IncLevel2, csv_mean)
+    # SIGNIFICANCE filter (forces non-significant if failed)
+    pass_filter <- !is.na(avg_count1) & avg_count1 >= 10 &
+                   !is.na(avg_count2) & avg_count2 >= 10 &
+                   !is.na(psi1) & psi1 >= 0.05 & psi1 <= 0.95 &
+                   !is.na(psi2) & psi2 >= 0.05 & psi2 <= 0.95
+    # RESTRICTED-UNIVERSE membership: count >= 10 and a PSI was computed (event
+    # was tested). PSI outside [0.05, 0.95] is kept in the restricted universe
+    # but stays non-significant via pass_filter -> FN/TN, not dropped.
+    in_restricted <- !is.na(avg_count1) & avg_count1 >= 10 &
+                     !is.na(avg_count2) & avg_count2 >= 10 &
+                     !is.na(psi1) & !is.na(psi2)
 
-  # Keep only FDR and ID for joining
-  rmats_sig <- rmats_df[, c("ID", "FDR")]
-  rmats_sig$ID <- as.character(rmats_sig$ID)
-  map_df$ID    <- as.character(map_df$ID)
-
-  merged <- merge(map_df[, c("ID", "GeneID", "DexseqFragment")],
-                  rmats_sig, by = "ID", all.x = FALSE)
-  if (nrow(merged) == 0) next
-
-  # Expand comma-separated DexseqFragment into one row per exonic part
-  expanded <- lapply(seq_len(nrow(merged)), function(i) {
-    parts <- trimws(unlist(strsplit(merged$DexseqFragment[i], ",")))
-    data.frame(
-      gene        = merged$GeneID[i],
-      exonic_part = parts,
-      FDR         = merged$FDR[i],
-      event_type  = etype,
-      stringsAsFactors = FALSE
+    rmats_fdr_rows[[etype]] <- data.frame(
+      event_type        = etype,
+      ID                = as.character(df$ID),
+      GeneID            = df$GeneID,
+      FDR               = df$FDR,
+      rmats_pass_filter = pass_filter,
+      rmats_in_restricted = in_restricted,
+      stringsAsFactors  = FALSE
     )
-  })
-  rmats_rows[[etype]] <- bind_rows(expanded)
-  message(sprintf("  %s: %d mapped exonic-part rows", etype, nrow(rmats_rows[[etype]])))
+    cat(sprintf("  JCEC %s: %d events, %d pass sig filter, %d in restricted universe\n",
+                etype, nrow(df), sum(pass_filter), sum(in_restricted)))
+  }
+  rmats_fdr <- bind_rows(rmats_fdr_rows)
+
+  jgt$ID <- as.character(jgt$ID)
+  rmats_fdr$ID <- as.character(rmats_fdr$ID)
+  jgt_merged <- merge(jgt,
+                      rmats_fdr[, c("event_type", "ID", "FDR",
+                                    "rmats_pass_filter", "rmats_in_restricted")],
+                      by = c("event_type", "ID"), all.x = TRUE)
+  jgt_merged$rmats_tested <- !is.na(jgt_merged$FDR)
+  jgt_merged$rmats_pass_filter[is.na(jgt_merged$rmats_pass_filter)] <- FALSE
+  jgt_merged$rmats_in_restricted[is.na(jgt_merged$rmats_in_restricted)] <- FALSE
+  jgt_merged$FDR[is.na(jgt_merged$FDR)] <- 1
+  jgt_merged$FDR[!jgt_merged$rmats_pass_filter] <- 1
+
+  jgt_by_gene    <- split(jgt_merged, jgt_merged$GeneID)
+  jgt_eval_genes <- unique(jgt_merged$GeneID)
+
+  eval_jgt_universe <- function(tool_label, restricted) {
+    rows_all <- list()
+    for (thr in padj_thresholds) {
+      rows_thr <- lapply(jgt_eval_genes, function(gene) {
+        ev <- jgt_by_gene[[gene]]
+        if (is.null(ev) || nrow(ev) == 0) return(NULL)
+        if (restricted) {
+          ev <- ev[ev$rmats_tested & ev$rmats_in_restricted, ]
+          if (nrow(ev) == 0) return(NULL)
+        }
+        sig <- !is.na(ev$FDR) & ev$FDR < thr
+        TP <- sum( sig &  ev$gt_positive, na.rm = TRUE)
+        FP <- sum( sig & !ev$gt_positive, na.rm = TRUE)
+        FN <- sum(!sig &  ev$gt_positive, na.rm = TRUE)
+        TN <- sum(!sig & !ev$gt_positive, na.rm = TRUE)
+        prec   <- if ((TP + FP) > 0) TP / (TP + FP) else NA_real_
+        recall <- if ((TP + FN) > 0) TP / (TP + FN) else NA_real_
+        data.frame(
+          gene = gene, sim_type = ev$sim_type[1], tool = tool_label,
+          padj_thr = thr, n_gt_pos = sum(ev$gt_positive),
+          n_gt_neg = sum(!ev$gt_positive), n_detected = sum(sig),
+          TP = TP, FP = FP, FN = FN, TN = TN,
+          precision = round(prec, 4), recall = round(recall, 4),
+          f1 = round(f1_safe(prec, recall), 4),
+          stringsAsFactors = FALSE
+        )
+      })
+      rows_all <- c(rows_all, rows_thr)
+    }
+    bind_rows(rows_all[!sapply(rows_all, is.null)])
+  }
+
+  rmats_junctiongt_per_gene            <- eval_jgt_universe("rMATS_junctionGT",            restricted = FALSE)
+  rmats_junctiongt_restricted_per_gene <- eval_jgt_universe("rMATS_junctionGT_restricted",  restricted = TRUE)
+  rmats_junctiongt_summary             <- build_summary(rmats_junctiongt_per_gene)
+  rmats_junctiongt_restricted_summary  <- build_summary(rmats_junctiongt_restricted_per_gene)
+
+  cat("\n=== rMATS Summary (junction GT, full universe + filter) ===\n")
+  print(as.data.frame(rmats_junctiongt_summary %>%
+    select(sim_type, padj_thr, n_genes,
+           micro_precision, micro_recall, micro_f1,
+           total_TP, total_FP, total_FN)))
+  cat("\n=== rMATS Summary (junction GT, restricted to tested+filtered events) ===\n")
+  print(as.data.frame(rmats_junctiongt_restricted_summary %>%
+    select(sim_type, padj_thr, n_genes,
+           micro_precision, micro_recall, micro_f1,
+           total_TP, total_FP, total_FN)))
+
+  for (thr in padj_thresholds) {
+    write.table(
+      rmats_junctiongt_per_gene[rmats_junctiongt_per_gene$padj_thr == thr, ],
+      file.path(out_dir, sprintf("rmats_junctiongt_per_gene_padj%.2f.txt", thr)),
+      sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(
+      rmats_junctiongt_restricted_per_gene[
+        rmats_junctiongt_restricted_per_gene$padj_thr == thr, ],
+      file.path(out_dir,
+                sprintf("rmats_junctiongt_restricted_per_gene_padj%.2f.txt", thr)),
+      sep = "\t", quote = FALSE, row.names = FALSE)
+  }
+  write.table(rmats_junctiongt_summary,
+              file.path(out_dir, "rmats_junctiongt_summary_by_simtype.txt"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(rmats_junctiongt_restricted_summary,
+              file.path(out_dir, "rmats_junctiongt_restricted_summary_by_simtype.txt"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  # --- rMATS breakdown by event type (SE/A3SS/A5SS/RI + ALL) ----------------
+  # Aggregates event-level confusion (not per-gene) directly from jgt_merged,
+  # which already excludes GT-untestable events and has FDR imputed to 1 for
+  # untested / filter-failing events. Pooled over all sim types, so FP includes
+  # Background/DGE false positives.
+  rmats_etype_summary <- function(restricted) {
+    rows <- list()
+    for (thr in padj_thresholds) {
+      d <- jgt_merged
+      if (restricted) d <- d[d$rmats_tested & d$rmats_in_restricted, ]
+      for (et in c("SE", "A3SS", "A5SS", "RI", "ALL")) {
+        dd  <- if (et == "ALL") d else d[d$event_type == et, ]
+        if (nrow(dd) == 0) next
+        sig <- !is.na(dd$FDR) & dd$FDR < thr
+        TP  <- sum( sig &  dd$gt_positive, na.rm = TRUE)
+        FP  <- sum( sig & !dd$gt_positive, na.rm = TRUE)
+        FN  <- sum(!sig &  dd$gt_positive, na.rm = TRUE)
+        TN  <- sum(!sig & !dd$gt_positive, na.rm = TRUE)
+        prec <- if ((TP + FP) > 0) TP / (TP + FP) else NA_real_
+        rec  <- if ((TP + FN) > 0) TP / (TP + FN) else NA_real_
+        rows[[length(rows) + 1]] <- data.frame(
+          event_type = et, padj_thr = thr, n_events = nrow(dd),
+          total_TP = TP, total_FP = FP, total_FN = FN, total_TN = TN,
+          micro_precision = round(prec, 4), micro_recall = round(rec, 4),
+          micro_f1 = round(f1_safe(prec, rec), 4),
+          stringsAsFactors = FALSE)
+      }
+    }
+    bind_rows(rows)
+  }
+  rmats_etype_summary_restricted <- rmats_etype_summary(TRUE)
+  write.table(rmats_etype_summary(FALSE),
+              file.path(out_dir, "rmats_junctiongt_summary_by_eventtype.txt"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  write.table(rmats_etype_summary_restricted,
+              file.path(out_dir, "rmats_junctiongt_restricted_summary_by_eventtype.txt"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  cat("\n=== rMATS by event type (restricted, all padj) ===\n")
+  print(as.data.frame(rmats_etype_summary_restricted))
+} else {
+  cat(sprintf("\n[skip] junction GT file not found: %s\n", junction_gt_file))
 }
 
-rmats_exparts <- bind_rows(rmats_rows)
-# If the same exonic part is covered by multiple events, keep the minimum FDR
-rmats_exparts <- rmats_exparts %>%
-  group_by(gene, exonic_part) %>%
-  summarise(FDR = min(FDR, na.rm = TRUE), .groups = "drop")
-
-cat(sprintf("  rMATS: %d unique gene x exonic_part entries\n", nrow(rmats_exparts)))
-rmats_by_gene <- split(rmats_exparts, rmats_exparts$gene)
-
-# Build per-gene set of all exonic parts rMATS can test (regardless of significance)
-# Used for coverage-restricted evaluation so GT denominator is limited to rMATS-testable exons
-rmats_testable_by_gene <- lapply(
-  split(rmats_exparts$exonic_part, rmats_exparts$gene),
-  unique
-)
-cat(sprintf("  rMATS: %d genes with testable exonic parts\n", length(rmats_testable_by_gene)))
-
-#  build DEXSeq exonic-part call table 
+#  build DEXSeq exonic-part call table
 
 cat("Loading DEXSeq results...\n")
 dexseq_df <- read.table(dexseq_file, header = TRUE, sep = "\t",
@@ -339,42 +445,19 @@ evaluate_tool <- function(tool_by_gene, tool_name,
   bind_rows(rows_all[!sapply(rows_all, is.null)])
 }
 
-# Full evaluation (framework i - total space): universe = all GT exons.
-# TN = all GT-negative exons not in each tool's significant set (including
-# untested ones; non-tested = implicit negative call).
-# No testable restriction; FN includes the coverage gap.
-rmats_per_gene  <- evaluate_tool(rmats_by_gene,  "rMATS")
 dexseq_per_gene <- evaluate_tool(dexseq_by_gene, "DEXSeq")
-
-# Coverage-restricted: both GT-positive and GT-negative restricted to each
-# tool's testable universe. FN = tested but not significant (no coverage gap).
-rmats_restricted_per_gene <- evaluate_tool(
-  rmats_by_gene, "rMATS_restricted",
-  testable_by_gene = rmats_testable_by_gene,
-  restrict_pos = TRUE
-)
 dexseq_restricted_per_gene <- evaluate_tool(
   dexseq_by_gene, "DEXSeq_restricted",
   testable_by_gene = dexseq_testable_by_gene,
   restrict_pos = TRUE
 )
 
-#  write per-gene results 
+#  write DEXSeq per-gene results
 
 for (thr in padj_thresholds) {
   write.table(
-    rmats_per_gene[rmats_per_gene$padj_thr == thr, ],
-    file.path(out_dir, sprintf("rmats_per_gene_padj%.2f.txt", thr)),
-    sep = "\t", quote = FALSE, row.names = FALSE
-  )
-  write.table(
     dexseq_per_gene[dexseq_per_gene$padj_thr == thr, ],
     file.path(out_dir, sprintf("dexseq_per_gene_padj%.2f.txt", thr)),
-    sep = "\t", quote = FALSE, row.names = FALSE
-  )
-  write.table(
-    rmats_restricted_per_gene[rmats_restricted_per_gene$padj_thr == thr, ],
-    file.path(out_dir, sprintf("rmats_restricted_per_gene_padj%.2f.txt", thr)),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
   write.table(
@@ -384,39 +467,17 @@ for (thr in padj_thresholds) {
   )
 }
 
-#  summaries 
+#  DEXSeq summaries
 
-rmats_summary              <- build_summary(rmats_per_gene)
-dexseq_summary             <- build_summary(dexseq_per_gene)
-rmats_restricted_summary   <- build_summary(rmats_restricted_per_gene)
-dexseq_restricted_summary  <- build_summary(dexseq_restricted_per_gene)
+dexseq_summary            <- build_summary(dexseq_per_gene)
+dexseq_restricted_summary <- build_summary(dexseq_restricted_per_gene)
 
-write.table(rmats_summary,
-            file.path(out_dir, "rmats_summary_by_simtype.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
 write.table(dexseq_summary,
             file.path(out_dir, "dexseq_summary_by_simtype.txt"),
-            sep = "\t", quote = FALSE, row.names = FALSE)
-write.table(rmats_restricted_summary,
-            file.path(out_dir, "rmats_restricted_summary_by_simtype.txt"),
             sep = "\t", quote = FALSE, row.names = FALSE)
 write.table(dexseq_restricted_summary,
             file.path(out_dir, "dexseq_restricted_summary_by_simtype.txt"),
             sep = "\t", quote = FALSE, row.names = FALSE)
-
-# print results 
-
-cat("\n=== rMATS Summary (full GT) ===\n")
-print(as.data.frame(rmats_summary %>%
-  select(sim_type, padj_thr, n_genes,
-         micro_precision, micro_recall, micro_f1,
-         total_TP, total_FP, total_FN)))
-
-cat("\n=== rMATS Summary (restricted to rMATS-testable exonic parts) ===\n")
-print(as.data.frame(rmats_restricted_summary %>%
-  select(sim_type, padj_thr, n_genes,
-         micro_precision, micro_recall, micro_f1,
-         total_TP, total_FP, total_FN)))
 
 cat("\n=== DEXSeq Summary (full GT) ===\n")
 print(as.data.frame(dexseq_summary %>%
