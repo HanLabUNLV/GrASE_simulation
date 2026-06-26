@@ -180,6 +180,32 @@ has_exon <- function(tx_gr, s, e) {
   any(start(tx_gr) == s & end(tx_gr) == e)
 }
 
+# --- junction-based matching ------------------------------------------------
+# Transcripts are matched to an event by its defining splice junctions (inner
+# donor/acceptor boundaries) rather than exact full-exon coordinates, so an
+# isoform that follows the same path but has different OUTER flanking-exon
+# boundaries is still placed correctly. rMATS reports upstream/downstream in
+# genomic order (upstream always genomically left) on both strands, so no
+# strand-conditional logic is needed.
+
+# per-transcript splice junctions as "donor-acceptor" (1-based exon end -> next
+# exon start), built vectorized from the flat exon GRanges. Single-exon
+# transcripts have no junctions and are simply absent from tx_junc.
+cat("Building per-transcript junction sets...\n")
+{
+  o   <- order(exons_gr$transcript_id, start(exons_gr))
+  tid <- exons_gr$transcript_id[o]
+  st  <- start(exons_gr)[o]; en <- end(exons_gr)[o]
+  n   <- length(tid)
+  same <- tid[-n] == tid[-1]                       # consecutive exons, same transcript
+  jstr <- paste(en[-n], st[-1], sep = "-")[same]   # junction donor-acceptor
+  tx_junc <- split(jstr, tid[-n][same])            # named by transcript_id
+}
+cat(sprintf("  %d transcripts with >=1 junction\n", length(tx_junc)))
+
+# does a transcript have a single exon spanning [a, b]? (retained intron)
+tx_spans <- function(tx_gr, a, b) any(start(tx_gr) <= a & end(tx_gr) >= b)
+
 # compute PSI for inclusion vs skip transcript sets (diagnostic only)
 psi <- function(inc_tx, skip_tx, strand, counts1, counts2) {
   inc_tx <- intersect(inc_tx, names(counts1))
@@ -207,16 +233,17 @@ process_SE <- function(events_df, tx_exons, counts1, counts2) {
     gene <- gsub('"', '', ev$GeneID)
 
     gene_tx <- txdf$TXNAME[txdf$GENEID == gene]
-    gene_tx_gr <- tx_exons[intersect(gene_tx, names(tx_exons))]
+    g_tx <- intersect(gene_tx, names(tx_junc))
 
-    if (length(gene_tx_gr) == 0) {
+    if (length(g_tx) == 0) {
       inc_tx <- skip_tx <- character(0)
     } else {
-      has_up   <- vapply(gene_tx_gr, has_exon, logical(1), uES, uEE)
-      has_skip <- vapply(gene_tx_gr, has_exon, logical(1), sES, sEE)
-      has_dn   <- vapply(gene_tx_gr, has_exon, logical(1), dES, dEE)
-      inc_tx  <- names(gene_tx_gr)[has_up & has_skip & has_dn]
-      skip_tx <- names(gene_tx_gr)[has_up & !has_skip & has_dn]
+      inc_j1 <- paste(uEE, sES, sep = "-")   # upstream -> cassette
+      inc_j2 <- paste(sEE, dES, sep = "-")   # cassette -> downstream
+      skip_j <- paste(uEE, dES, sep = "-")   # upstream -> downstream (skip)
+      jl <- tx_junc[g_tx]
+      inc_tx  <- g_tx[vapply(jl, function(j) (inc_j1 %in% j) && (inc_j2 %in% j), logical(1))]
+      skip_tx <- g_tx[vapply(jl, function(j) skip_j %in% j, logical(1))]
     }
 
     ps <- psi(inc_tx, skip_tx, ev$strand, counts1, counts2)
@@ -248,16 +275,21 @@ process_AltSS <- function(events_df, etype, tx_exons, counts1, counts2) {
     gene <- gsub('"', '', ev$GeneID)
 
     gene_tx <- txdf$TXNAME[txdf$GENEID == gene]
-    gene_tx_gr <- tx_exons[intersect(gene_tx, names(tx_exons))]
+    g_tx <- intersect(gene_tx, names(tx_junc))
 
-    if (length(gene_tx_gr) == 0) {
+    if (length(g_tx) == 0) {
       long_tx <- short_tx <- character(0)
     } else {
-      has_long  <- vapply(gene_tx_gr, has_exon, logical(1), lES, lEE)
-      has_short <- vapply(gene_tx_gr, has_exon, logical(1), sES, sEE)
-      has_flank <- vapply(gene_tx_gr, has_exon, logical(1), fES, fEE)
-      long_tx  <- names(gene_tx_gr)[has_long  & has_flank]
-      short_tx <- names(gene_tx_gr)[has_short & has_flank & !has_long]
+      if (fES > lEE) {                          # flank to the right: junction at exon END
+        long_j  <- paste(lEE, fES, sep = "-")
+        short_j <- paste(sEE, fES, sep = "-")
+      } else {                                  # flank to the left: junction at exon START
+        long_j  <- paste(fEE, lES, sep = "-")
+        short_j <- paste(fEE, sES, sep = "-")
+      }
+      jl <- tx_junc[g_tx]
+      long_tx  <- g_tx[vapply(jl, function(j) long_j  %in% j, logical(1))]
+      short_tx <- g_tx[vapply(jl, function(j) short_j %in% j, logical(1))]
     }
 
     ps <- psi(long_tx, short_tx, ev$strand, counts1, counts2)
@@ -290,15 +322,14 @@ process_RI <- function(events_df, tx_exons, counts1, counts2) {
 
     gene_tx <- txdf$TXNAME[txdf$GENEID == gene]
     gene_tx_gr <- tx_exons[intersect(gene_tx, names(tx_exons))]
+    g_tx <- intersect(gene_tx, names(tx_junc))
 
     if (length(gene_tx_gr) == 0) {
       inc_tx <- skip_tx <- character(0)
     } else {
-      has_retained <- vapply(gene_tx_gr, has_exon, logical(1), rES, rEE)
-      has_up       <- vapply(gene_tx_gr, has_exon, logical(1), uES, uEE)
-      has_dn       <- vapply(gene_tx_gr, has_exon, logical(1), dES, dEE)
-      inc_tx  <- names(gene_tx_gr)[has_retained]
-      skip_tx <- names(gene_tx_gr)[has_up & has_dn & !has_retained]
+      skip_j  <- paste(uEE, dES, sep = "-")          # intron spliced out
+      skip_tx <- g_tx[vapply(tx_junc[g_tx], function(j) skip_j %in% j, logical(1))]
+      inc_tx  <- names(gene_tx_gr)[vapply(gene_tx_gr, tx_spans, logical(1), uEE, dES)]  # retained
     }
 
     ps <- psi(inc_tx, skip_tx, ev$strand, counts1, counts2)
