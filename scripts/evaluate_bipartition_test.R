@@ -55,8 +55,10 @@ gt_dir      <- args[2]
 out_dir     <- args[3]
 sim_rda     <- args[4]
 delta       <- if (length(args) >= 5) as.numeric(args[5]) else 0
+min_dpi     <- if (length(args) >= 6) as.numeric(args[6]) else 0
 
 cat(sprintf("lfc_diff_net delta = %g\n", delta))
+cat(sprintf("min_dpi (|delta_pi| floor) = %g\n", min_dpi))
 
 padj_thresholds <- c(0.01, 0.05, 0.1, 0.2)
 
@@ -113,8 +115,11 @@ cat(sprintf("  %d total rows, %d unique genes across all files\n",
             nrow(tests), length(unique(tests$gene))))
 
 # Each row is one comparison (base) or one event (combination files with setdiff_union).
+# delta_pi is required for the min_dpi effect-size floor (matches add_significant);
+# if a model's output lacks it, treat as NA (passes the floor).
+if (!("delta_pi" %in% names(tests))) tests$delta_pi <- NA_real_
 tests_eval <- tests %>%
-  select(gene, event, comparison, padj, lfc_diff_net, setdiff1, setdiff2,
+  select(gene, event, comparison, padj, lfc_diff_net, delta_pi, setdiff1, setdiff2,
          any_of("setdiff_union"))
 
 # build per-gene set of exonic parts grase explicitly tested (setdiff only)
@@ -267,7 +272,8 @@ eval_exonic_parts <- function(label, testable_by_gene = NULL, restrict_pos = TRU
     cat(sprintf("    padj < %.2f\n", thr))
 
     sig_rows <- tests_eval[!is.na(tests_eval$padj) & tests_eval$padj < thr &
-                             (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta), ]
+                             (is.na(tests_eval$lfc_diff_net) | tests_eval$lfc_diff_net > delta) &
+                             (is.na(tests_eval$delta_pi) | abs(tests_eval$delta_pi) >= min_dpi), ]
     
     # Detected exonic parts:
     # - combination files (setdiff_union present): use the precomputed union of both sides.
