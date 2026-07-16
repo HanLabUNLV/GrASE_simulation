@@ -492,10 +492,10 @@ run_attrition_output("restricted", testable_by_gene = grase_testable_by_gene)
 # Output D: ROC data -- sweep delta on lfc_diff_net > delta
 # =============================================================================
 
-cat("\n--- Output D: ROC sweep (padj < 0.05) ---\n")
+cat("\n--- Output D: ROC sweep (padj < 0.01) ---\n")
 
 delta_values <- c(-Inf, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0)
-roc_padj <- 0.05
+roc_padj <- 0.01
 
 eval_pr_delta <- function(d, thr, testable_by_gene) {
   if (is.infinite(d) && d < 0) {
@@ -559,7 +559,7 @@ run_roc_output <- function(label, testable_by_gene) {
     arrange(sim_type, padj_thr, delta)
   outfile <- file.path(out_dir, sprintf("roc_data.%s.txt", label))
   write.table(roc_summary, outfile, sep = "\t", quote = FALSE, row.names = FALSE)
-  cat(sprintf("\n=== ROC summary [%s] (padj < 0.05, DTE + DTU) ===\n", label))
+  cat(sprintf("\n=== ROC summary [%s] (padj < 0.01, DTE + DTU) ===\n", label))
   print(as.data.frame(roc_summary %>%
     filter(sim_type %in% c("DTE", "DTU")) %>%
     select(sim_type, delta, micro_precision, micro_recall, micro_f1,

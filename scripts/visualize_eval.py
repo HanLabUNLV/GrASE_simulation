@@ -70,10 +70,10 @@ MULTINOMIAL_METHODS = {
 }
 
 TOOLS_METHODS = {
-    "rmats":             {"dir": "eval_saturn_rmats", "prefix": "rmats"},
+    "rmats":             {"dir": "eval_dexseq_rmats", "prefix": "rmats"},
     "dexseq":            {"dir": "eval_dexseq_rmats", "prefix": "dexseq"},
-    "saturn":            {"dir": "eval_saturn_rmats", "prefix": "saturn"},
-    "saturn_regularFDR": {"dir": "eval_saturn_rmats", "prefix": "saturn_regularFDR"},
+#    "saturn":            {"dir": "eval_saturn_rmats", "prefix": "saturn"},
+#    "saturn_regularFDR": {"dir": "eval_saturn_rmats", "prefix": "saturn_regularFDR"},
 }
 
 # All GrASE methods with namespaced keys for best-grase selection
@@ -154,10 +154,16 @@ TOOLS_PALETTE = {
 
 def _summary_path(results_dir, methods_dict, method, restricted, gt_level="gtI"):
     cfg = methods_dict[method]
-    if restricted:
-        fname = f"{cfg['prefix']}_restricted_{gt_level}_summary_by_simtype.txt"
+    if gt_level: 
+      if restricted:
+          fname = f"{cfg['prefix']}_restricted_{gt_level}_summary_by_simtype.txt"
+      else:
+          fname = f"{cfg['prefix']}_{gt_level}_summary_by_simtype.txt"
     else:
-        fname = f"{cfg['prefix']}_{gt_level}_summary_by_simtype.txt"
+      if restricted:
+          fname = f"{cfg['prefix']}_restricted_summary_by_simtype.txt"
+      else:
+          fname = f"{cfg['prefix']}_summary_by_simtype.txt"
     return results_dir / cfg["dir"] / fname
 
 
@@ -207,7 +213,7 @@ def load_per_gene(results_dir, methods_dict, restricted=False, gt_level="gtI"):
     return out
 
 
-def best_method(summary, padj=0.05):
+def best_method(summary, padj=0.01):
     """Return method with highest micro_f1 at padj for sim_type ALL."""
     sub = summary[(summary["sim_type"] == "ALL") & (summary["padj_thr"] == padj)]
     if sub.empty:
@@ -422,7 +428,7 @@ def fig_f1_heatmap(summary, methods, labels, out_dir, title_prefix, suffix=""):
 
 
 def fig_metric_bars(summary, methods, palette, labels, out_dir,
-                    title_prefix, padj=0.05, suffix=""):
+                    title_prefix, padj=0.01, suffix=""):
     sim_types = [s for s in SIM_TYPES_ORDERED
                  if s in summary["sim_type"].unique() and s != "DGE"]
     metrics      = ["micro_precision", "micro_recall", "micro_f1"]
@@ -495,7 +501,7 @@ def fig_threshold_curves(summary, methods, palette, labels, out_dir,
 
 
 def fig_per_gene_boxplot(per_gene, methods, palette, labels, out_dir,
-                         title_prefix, padj=0.05, suffix=""):
+                         title_prefix, padj=0.01, suffix=""):
     sim_types = [s for s in SIM_TYPES_ORDERED
                  if s in per_gene["sim_type"].unique()
                  and s not in ("ALL", "Background", "DGE")]
@@ -539,7 +545,7 @@ def fig_per_gene_boxplot(per_gene, methods, palette, labels, out_dir,
 
 
 def fig_confusion_counts(summary, methods, palette, labels, out_dir,
-                         title_prefix, padj=0.05, suffix=""):
+                         title_prefix, padj=0.01, suffix=""):
     sim_types = [s for s in SIM_TYPES_ORDERED
                  if s in summary["sim_type"].unique()]
     sub   = summary[summary["padj_thr"] == padj]
@@ -584,7 +590,7 @@ def fig_confusion_counts(summary, methods, palette, labels, out_dir,
 # ---------------------------------------------------------------------------
 
 def run_group(results_dir, methods_dict, palette, labels, group_name,
-              out_base, padj=0.05, panels=True, gt_level="gtI"):
+              out_base, padj=0.01, panels=True, gt_level="gtI"):
     out_dir  = out_base / group_name
     out_dir.mkdir(parents=True, exist_ok=True)
     methods  = list(methods_dict.keys())
@@ -639,7 +645,7 @@ def run_group(results_dir, methods_dict, palette, labels, group_name,
 # Cross comparison: best bipartition vs best n_choose_2 vs multinomial
 # ---------------------------------------------------------------------------
 
-def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.05,
+def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.01,
               user_best_bip=None, user_best_nc2=None, gt_level="gtI"):
     out_dir = out_base / "cross"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -716,9 +722,9 @@ def parse_args():
                         help="Results directory (default: ~/GrASE_simulation/results)")
     parser.add_argument("--out", default="plots",
                         help="Output directory for plots (default: ./plots)")
-    parser.add_argument("--padj", type=float, default=0.05,
+    parser.add_argument("--padj", type=float, default=0.01,
                         help="Primary padj threshold for bar/box plots and best-method "
-                             "selection (default: 0.05)")
+                             "selection (default: 0.01)")
     parser.add_argument("--groups", nargs="+",
                         choices=["bipartition", "n_choose_2", "cross", "tools"],
                         default=["bipartition", "n_choose_2", "cross", "tools"],
@@ -740,11 +746,11 @@ def parse_args():
                         help="Ground truth DTE stringency level to plot "
                              "(default: gtI). gtI=all changed-tx exons, "
                              "gtII=shared+unique, gtIII=unique only.")
-    parser.add_argument("--best-grase", default=None,
+    parser.add_argument("--best-grase", default='bipartition.EBapprox',
                         choices=list(ALL_GRASE_METHODS.keys()),
                         metavar="GROUP.METHOD",
                         help="GrASE method to include in tools comparison, as "
-                             "group.method (e.g. bipartition.EBfixed). "
+                             "group.method (e.g. bipartition.EBapprox). "
                              "If omitted, auto-selected by highest micro_f1 at --padj "
                              "across all GrASE methods.")
     return parser.parse_args()
@@ -795,7 +801,7 @@ def main():
             src = "user-specified"
         else:
             all_summary = load_summaries(results_dir, ALL_GRASE_METHODS, restricted=False,
-                                     gt_level=gt_level)
+                                     gt_level=False)
             if all_summary.empty:
                 best_grase_key = None
                 print("  [warn] could not load any GrASE summaries for auto-selection")
@@ -816,7 +822,7 @@ def main():
                                    **tools_labels}
 
         run_group(results_dir, tools_methods_aug, tools_palette_aug, tools_labels_aug,
-                  "tools", out_base, padj=args.padj, panels=False, gt_level=gt_level)
+                  "tools", out_base, padj=args.padj, panels=False, gt_level=False)
 
     # 4. Cross comparison: best bipartition vs best n_choose_2 vs multinomial
     if "cross" in groups:
