@@ -210,26 +210,34 @@ prob_at <- function(Cv) {
 }
 PROB <- list("0.20" = setNames(jk$prob, jk$uid), "0.10" = prob_at("0.10"))
 
-## --- MAJIQ (LSVs; per-LSV max prob, transcripts of the max-prob junction) --
+## --- MAJIQ (LSVs; per-LSV max prob; LSV is the unit so it implicates the WHOLE
+## LSV -- the union of ALL its junctions' users, regardless of per-junction
+## significance -- analogous to rMATS implicating inc+skip. (PSI sums to 1 across
+## the LSV, so the non-max junctions are the other side of the same switch.) The
+## per-junction fine view is MAJIQjunc below.) --------------------------------
 exons_gr <- import(file.path(BASE, "ref/gencode.v28.annotation.gtf"),
                    feature.type = "exon", colnames = c("transcript_id", "gene_id"))
 { o <- order(exons_gr$transcript_id, start(exons_gr))
   tid <- exons_gr$transcript_id[o]; s_ <- start(exons_gr)[o]; e_ <- end(exons_gr)[o]
   n <- length(tid); same <- tid[-n] == tid[-1]
   tx_junc <- split(paste(e_[-n], s_[-1], sep = "-")[same], tid[-n][same]) }
+# whole-LSV implicated set: union of every junction's users, keyed by lsv_id
+imp_by_lsv <- tapply(seq_len(nrow(jk)), jk$lsv_id,
+                     function(ix) unique(unlist(jk$imp[ix])))
 for (Cv in c("0.20", "0.10")) {
   pv <- PROB[[Cv]][jk$uid]; pv[is.na(pv)] <- 0
   d  <- data.frame(lsv_id = jk$lsv_id, gene = jk$gene, p = as.numeric(pv),
                    idx = seq_len(nrow(jk)), stringsAsFactors = FALSE)
-  # per LSV: the max probability and the row index achieving it
+  # per LSV: the max probability (the LSV's significance statistic)
   o    <- order(d$lsv_id, -d$p)
   dd   <- d[o, ]
   keep <- !duplicated(dd$lsv_id)
   top  <- dd[keep, ]
   calls[[paste0("MAJIQ_C", Cv)]] <- list(
     gene = top$gene, stat = top$p, gene_stat = top$p,
-    units = as.list(top$lsv_id), imp = jk$imp[top$idx], lower_better = FALSE)
-  cat(sprintf("  MAJIQ_C%s: %d LSVs (joined)\n", Cv, nrow(top)))
+    units = as.list(top$lsv_id), imp = unname(imp_by_lsv[top$lsv_id]),
+    lower_better = FALSE)
+  cat(sprintf("  MAJIQ_C%s: %d LSVs (whole-LSV implication)\n", Cv, nrow(top)))
 }
 
 ## --- MAJIQ at JUNCTION level -----------------------------------------------
@@ -298,11 +306,11 @@ GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_dpi0.1 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_dpi0.2 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              MAJIQjunc_C0.20 = c(0.99,0.95,0.9,0.8,0.5,0.3,0.1),
-              MAJIQjunc_C0.10 = c(0.99,0.95,0.9,0.8,0.5,0.3,0.1),
+              MAJIQjunc_C0.20 = c(0.99,0.95,0.9,0.8,0.7,0.5),
+              MAJIQjunc_C0.10 = c(0.99,0.95,0.9,0.8,0.7,0.5),
               DEXSeq = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              MAJIQ_C0.20 = c(0.99,0.95,0.9,0.8,0.5,0.3,0.1),
-              MAJIQ_C0.10 = c(0.99,0.95,0.9,0.8,0.5,0.3,0.1),
+              MAJIQ_C0.20 = c(0.99,0.95,0.9,0.8,0.7,0.5),
+              MAJIQ_C0.10 = c(0.99,0.95,0.9,0.8,0.7,0.5),
               rMATS = c(1e-4,1e-3,0.01,0.05,0.1,0.2))
 # FULL-universe positive counts per unit type (denominator = every GT-positive
 # unit that exists, tested or not). RESTRICTED = positives among units the tool

@@ -7,7 +7,7 @@
 # transcripts directly, but every call implicates a transcript set:
 #   GrASE : transcripts of the tested distinct path group (transcripts1/2)
 #   DEXSeq: transcripts containing the significant bin (GT 'transcripts' col)
-#   MAJIQ : transcripts using the significant junction (GTF tx_junc)
+#   MAJIQ : transcripts using ANY junction of the significant LSV (whole LSV)
 #   rMATS : whole-event calls cannot disambiguate a transcript; localization
 #           precision only, via the junction GT's n_manip_inc/skip columns.
 #
@@ -165,7 +165,7 @@ dd$imp <- lapply(paste(dd$gene, dd$exon, sep = ":"), function(k)
   if (exists(k, envir = tx_of_bin)) get(k, envir = tx_of_bin) else character(0))
 dexseq_tab <- score_tool(dd[, c("gene", "sim_type", "imp")], "DEXSeq")
 
-## --- MAJIQ (per-junction) ---------------------------------------------------
+## --- MAJIQ (LSV is the unit; whole-LSV implication) -------------------------
 cat("MAJIQ...\n")
 exons_gr <- import(file.path(BASE, "ref/gencode.v28.annotation.gtf"),
                    feature.type = "exon", colnames = c("transcript_id", "gene_id"))
@@ -177,19 +177,21 @@ exons_gr <- import(file.path(BASE, "ref/gencode.v28.annotation.gtf"),
 tsv <- read.table(file.path(BASE, "majiq/majiq_deltapsi.thr0.20.tsv"), header = TRUE,
                   sep = "\t", quote = "", comment.char = "#", stringsAsFactors = FALSE)
 tsv$sim_type <- get_st(tsv$gene_id)
-# null-gene LSVs KEPT -- their significant junctions are FP calls
+# null-gene LSVs KEPT -- a significant LSV in a null gene is an FP call.
+# LSV is the unit: significant iff its MAX junction clears C; when significant it
+# implicates the WHOLE LSV (union of ALL its junctions' users), regardless of
+# per-junction significance -- matching pr_curves MAJIQ_C and rMATS inc+skip.
 mrows <- list()
 for (i in seq_len(nrow(tsv))) {
   pj <- suppressWarnings(as.numeric(strsplit(tsv$probability_changing[i], "[;,]")[[1]]))
   lj <- parse_list(gsub(";", ",", tsv$junctions_coords[i]))
   K <- min(length(pj), length(lj)); if (K == 0) next
-  sig_j <- which(!is.na(pj[1:K]) & pj[1:K] >= 0.95)
-  if (length(sig_j) == 0) next
+  mx <- suppressWarnings(max(pj[1:K], na.rm = TRUE))
+  if (!is.finite(mx) || mx < 0.95) next
   gtx <- intersect(txdf$TXNAME[txdf$GENEID == tsv$gene_id[i]], names(tx_junc))
-  for (jx in sig_j) {
-    users <- gtx[vapply(tx_junc[gtx], function(v) lj[jx] %in% v, logical(1))]
-    mrows[[length(mrows) + 1]] <- list(gene = tsv$gene_id[i], sim_type = tsv$sim_type[i], imp = users)
-  }
+  users <- unique(unlist(lapply(lj[1:K], function(jc)
+    gtx[vapply(tx_junc[gtx], function(v) jc %in% v, logical(1))])))
+  mrows[[length(mrows) + 1]] <- list(gene = tsv$gene_id[i], sim_type = tsv$sim_type[i], imp = users)
 }
 mj <- data.frame(gene = vapply(mrows, `[[`, "", "gene"),
                  sim_type = vapply(mrows, `[[`, "", "sim_type"), stringsAsFactors = FALSE)
