@@ -101,7 +101,25 @@ score_tool <- function(calls, tool) {
       n_manip_tx     = if (!is.null(rec_sub)) nrow(rec_sub) else NA_integer_,
       n_tx_recovered = if (!is.null(rec_sub)) sum(rec_sub$hit) else NA_integer_,
       tx_recall      = if (!is.null(rec_sub)) round(mean(rec_sub$hit), 4) else NA_real_,
-      n_sig_calls = nc, n_impl_tx = length(implic), n_impl_manip = tp,
+      n_sig_calls = nc,
+      ## calls_hit -- calls whose implicated set contains >=1 manipulated
+      ## transcript (call currency, NOT transcript currency). calls_hit /
+      ## n_sig_calls separates "did the call land" from "how many bystanders
+      ## came along" (sharp_*), the two factors that jointly set prec_tolerant.
+      ## NOTE this criterion is generous to WIDE implicated sets -- more
+      ## transcripts implicated is more chances to contain a manipulated one --
+      ## so read it alongside sharp_median, not alone.
+      calls_hit = sum(h), hit_rate = round(sum(h) / max(nc, 1), 4),
+      n_impl_tx = length(implic), n_impl_manip = tp,
+      ## explicit TP/FP in TRANSCRIPT currency. TP is shared by both precisions
+      ## (= n_impl_manip); the two FP columns are what differ:
+      ##   FP_strict   -- every implicated non-manipulated transcript
+      ##   FP_tolerant -- only those implicated EXCLUSIVELY by calls that hit
+      ##                  no manipulated transcript (co-travellers of a genuine
+      ##                  hit forgiven). FP_tolerant <= FP_strict always.
+      ## NOTE these are per-TRANSCRIPT, so a wrong call is charged once per
+      ## transcript it implicates -- hence far larger than a per-call FP count.
+      TP = tp, FP_strict = fp_strict, FP_tolerant = fp_tol,
       prec_strict   = round(tp / max(tp + fp_strict, 1), 4),
       prec_tolerant = round(tp / max(tp + fp_tol, 1), 4),
       sharp_median = if (nc > 0) as.numeric(median(sizes[idx])) else NA_real_,
@@ -131,21 +149,179 @@ score_tool <- function(calls, tool) {
   bind_rows(out)
 }
 
+## TWO-STAGE THRESHOLD (see pr_curves_three_levels_gtrule.R for the full note).
+## exontest.R's nested_BH screens genes at a FIXED alpha = 0.05 and then runs
+## within-gene BH inside survivors, so the shipped padj already encodes a gene
+## screen at 0.05 regardless of the unit threshold applied here. Filtering
+## padj < 0.01 therefore accepts units from genes admitted at a LOOSER screen
+## than the unit cut. Both stages are recoverable from the raw p-values, and the
+## correct rule at level t is padj_gene < t AND padj_within < t, encoded as
+## pmax(). On the internal file this is 972 significant units at 0.01 rather
+## than 1,012.
+two_stage <- function(pv, gene, padj_gene) {
+  within <- ave(pv, gene, FUN = function(x) p.adjust(x, method = "BH"))
+  pmax(within, padj_gene)
+}
+
 ## --- GrASE ------------------------------------------------------------------
 cat("GrASE...\n")
-g <- bind_rows(lapply(c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-                        "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt"),
+grase_src <- c(internal = "bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
+               TSSTTS   = "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE, sep = "\t",
+              quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
+g <- bind_rows(lapply(grase_src,
   function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
                          comment.char = "", stringsAsFactors = FALSE)[,
-    c("gene", "comparison", "padj", "lfc_diff_net", "transcripts1", "transcripts2")]))
-g <- g[!is.na(g$padj) & g$padj < 0.01 & !is.na(g$lfc_diff_net) & g$lfc_diff_net > 0, ]
+    c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
+      "transcripts1", "transcripts2")]))
+g$src <- rep(names(grase_src), times = g_n)
+## base call condition: BOTH nested_BH stages below 0.01, AND lfc_diff_net > 0
+g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene)
+g <- g[!is.na(g$padj2) & g$padj2 < 0.01 & !is.na(g$lfc_diff_net) & g$lfc_diff_net > 0, ]
 g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
 g$sim_type <- get_st(g$gene)
 grase_tab <- score_tool(g[, c("gene", "sim_type", "imp")], "GrASE")
+## Call-side effect-size variants, symmetric to MAJIQ's built-in C
+## (GrASE_dpi0.1 <-> MAJIQ_C0.10, GrASE_dpi0.2 <-> MAJIQ_C0.20). Without these
+## the table compares MAJIQ WITH an effect-size threshold against GrASE WITHOUT
+## one, which is not a like-for-like operating point.
+for (dp in c(0.1, 0.2)) {
+  gk <- g[!is.na(g$delta_pi) & abs(g$delta_pi) >= dp, ]
+  grase_tab <- bind_rows(grase_tab,
+    score_tool(gk[, c("gene", "sim_type", "imp")], sprintf("GrASE_dpi%.1f", dp)))
+}
+## GrASE on the STRAND-RECONSTRUCTED counts, exonic unit, no junction merge.
+## Same bipartitions, same model, same call rule -- only the counts differ:
+## dexseq_count --stranded reverse on an unstranded library (half depth,
+## antisense contamination) vs strand recovered from read origin.
+## See ../stranded_reconstruction.md.
+str_src <- c(internal = "bipartition.internal.stranded.test.EBapprox/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
+             TSSTTS   = "bipartition.TSSTTS.stranded.test.EBapprox/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+if (all(file.exists(file.path(BASE, str_src)))) {
+  sn <- vapply(str_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE,
+        sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
+  sg <- bind_rows(lapply(str_src,
+    function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
+      comment.char = "", stringsAsFactors = FALSE)[,
+      c("gene","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
+        "transcripts1","transcripts2")]))
+  sg$src <- rep(names(str_src), times = sn)
+  sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene)
+  sg <- sg[!is.na(sg$padj2) & sg$padj2 < 0.01 &
+           !is.na(sg$lfc_diff_net) & sg$lfc_diff_net > 0, ]
+  sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
+  sg$sim_type <- get_st(sg$gene)
+  K <- c("gene","sim_type","imp")
+  grase_tab <- bind_rows(grase_tab, score_tool(sg[, K], "GrASE_stranded"))
+  for (dp in c(0.1, 0.2)) {
+    sk <- sg[!is.na(sg$delta_pi) & abs(sg$delta_pi) >= dp, ]
+    grase_tab <- bind_rows(grase_tab,
+      score_tool(sk[, K], sprintf("GrASE_stranded_dpi%.1f", dp)))
+  }
+  grase_tab <- bind_rows(grase_tab,
+    score_tool(sg[sg$src == "internal", K], "GrASE_stranded_internal"))
+}
+
+## internal-only bubbles: the strict like-for-like against a junction, since
+## MAJIQ cannot test a TSS/TTS boundary at all.
+gi <- g[g$src == "internal", ]
+grase_tab <- bind_rows(grase_tab,
+  score_tool(gi[, c("gene", "sim_type", "imp")], "GrASE_internal"))
+
+## GrASE with junction-merged bipartitions, BOTH types. A side with no
+## exclusive exonic part emits no test in the exonic pipeline; where that side
+## owns an exclusive intron, the merged counts substitute its split-read count.
+## The rule is the same for internal and TSS/TTS (merge_exon_sj_counts.R fires
+## on is.na(setdiff) & !is.na(intron_distinct)). It was first applied only to
+## internal on the assumption that a TSS/TTS empty side is always a nested
+## terminal path with no unique junction; that holds for part of them, but a
+## large share are alternative donors/acceptors riding inside a terminal bubble
+## and DO own an exclusive junction (scan: scripts/tsstts_empty_scan.py).
+merged_src <- c(
+  internal = "bipartition.merged.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
+  TSSTTS   = "bipartition.merged.TSSTTS.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
+read_merged <- function(f) {
+  p <- file.path(BASE, f)
+  if (!file.exists(p)) return(NULL)
+  d <- read.table(p, header = TRUE, sep = "\t", quote = "", comment.char = "",
+                  stringsAsFactors = FALSE)
+  d$padj2 <- two_stage(d$p.value, d$gene, d$padj_gene)
+  d <- d[!is.na(d$padj2) & d$padj2 < 0.01 &
+         !is.na(d$lfc_diff_net) & d$lfc_diff_net > 0, ]
+  d$imp <- lapply(ifelse(grepl("diff1", d$comparison), d$transcripts1, d$transcripts2), parse_list)
+  d$sim_type <- get_st(d$gene)
+  d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
+  d[, c("gene", "sim_type", "src", "delta_pi", "imp")]
+}
+mg_int <- read_merged(merged_src[["internal"]])
+mg_tss <- read_merged(merged_src[["TSSTTS"]])
+KEEP <- c("gene", "sim_type", "imp")
+## internal merged + exonic TSS/TTS -- the earlier operating point, kept so the
+## TSS/TTS extension can be read off as a separate increment.
+grase_tab <- bind_rows(grase_tab, score_tool(
+  bind_rows(mg_int[, KEEP], g[g$src == "TSSTTS", KEEP]), "GrASE_merged"))
+if (!is.null(mg_tss)) {
+  mg <- bind_rows(mg_int, mg_tss)
+  grase_tab <- bind_rows(grase_tab, score_tool(mg[, KEEP], "GrASE_merged_all"))
+  ## Effect-size variants on the merged unit, so every matched triple has a
+  ## merged member:  GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1, etc.
+  for (dp in c(0.1, 0.2)) {
+    mk <- mg[!is.na(mg$delta_pi) & abs(mg$delta_pi) >= dp, ]
+    grase_tab <- bind_rows(grase_tab,
+      score_tool(mk[, KEEP], sprintf("GrASE_merged_dpi%.1f", dp)))
+  }
+  ## internal-only merged: the like-for-like against a junction tool, since
+  ## MAJIQ cannot test a TSS/TTS boundary at all.
+  grase_tab <- bind_rows(grase_tab,
+    score_tool(mg_int[, KEEP], "GrASE_merged_internal"))
+}
+## same merged unit, on the STRAND-RECONSTRUCTED counts
+mstr <- c(internal = "bipartition.merged.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
+          TSSTTS   = "bipartition.merged.TSSTTS.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
+if (all(file.exists(file.path(BASE, mstr)))) {
+  ms <- bind_rows(lapply(names(mstr), function(k) read_merged(mstr[[k]])))
+  KEEP <- c("gene","sim_type","imp")
+  grase_tab <- bind_rows(grase_tab, score_tool(ms[, KEEP], "GrASE_merged_stranded"))
+  for (dp in c(0.1, 0.2)) {
+    mk <- ms[!is.na(ms$delta_pi) & abs(ms$delta_pi) >= dp, ]
+    grase_tab <- bind_rows(grase_tab,
+      score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_dpi%.1f", dp)))
+  }
+  ## internal-only merged+stranded: the strict like-for-like against a junction
+  ## tool, since MAJIQ cannot test a TSS/TTS boundary at all.
+  grase_tab <- bind_rows(grase_tab,
+    score_tool(ms[ms$src == "internal", KEEP], "GrASE_merged_stranded_internal"))
+
+  ## Same merged unit and the same raw p-values, but PLAIN BH instead of
+  ## exontest.R's nested_BH gene screen -- matching DEXSeq's FDR architecture.
+  ## Under nested_BH only 1,345 null-gene units are reachable at any threshold;
+  ## under plain BH 209,981 are. The two agree closely at padj 0.01 and diverge
+  ## as it loosens, so carrying both makes the architecture explicit.
+  bh_raw <- bind_rows(lapply(names(mstr), function(k) {
+    d <- read.table(file.path(BASE, mstr[[k]]), header = TRUE, sep = "\t",
+                    quote = "", comment.char = "", stringsAsFactors = FALSE)
+    ## source/sink are node ids: integer in the internal file, character ("R"/"L")
+    ## in TSS/TTS, so bind_rows needs them coerced before stacking.
+    d$source <- as.character(d$source); d$sink <- as.character(d$sink)
+    d$src <- k; d }))
+  bh_raw$padj_BH <- p.adjust(bh_raw$p.value, method = "BH")
+  bh <- bh_raw[!is.na(bh_raw$padj_BH) & bh_raw$padj_BH < 0.01 &
+               !is.na(bh_raw$lfc_diff_net) & bh_raw$lfc_diff_net > 0, ]
+  bh$imp <- lapply(ifelse(grepl("diff1", bh$comparison), bh$transcripts1, bh$transcripts2), parse_list)
+  bh$sim_type <- get_st(bh$gene)
+  grase_tab <- bind_rows(grase_tab, score_tool(bh[, KEEP], "GrASE_BH"))
+}
 
 ## --- DEXSeq -----------------------------------------------------------------
 cat("DEXSeq...\n")
-dex <- read.table(file.path(BASE, "DEXSeq/dexseq_group1_group2/all.group1_group2.dxd_filteredbyCountMultiExon.txt"),
+## Scored for both count sources: the original (dexseq_count --stranded reverse
+## on an unstranded library) and the strand-reconstructed rerun.
+dexseq_tab <- NULL
+for (dxcfg in list(c("DEXSeq",          "DEXSeq/dexseq_group1_group2/all.group1_group2.dxd_filteredbyCountMultiExon.txt"),
+                   c("DEXSeq_stranded", "DEXSeq/dexseq_group1_group2_stranded/all.group1_group2.dxd_filteredbyCountMultiExon.txt"))) {
+dxlab <- dxcfg[1]; dxpath <- dxcfg[2]
+if (!file.exists(file.path(BASE, dxpath))) next
+dex <- read.table(file.path(BASE, dxpath),
                   header = FALSE, skip = 1, sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)
 dexp <- suppressWarnings(as.numeric(dex[[8]]))
 dd <- data.frame(gene = dex[[2]], exon = dex[[3]], stringsAsFactors = FALSE)[!is.na(dexp) & dexp < 0.01, ]
@@ -163,7 +339,8 @@ for (gene in unique(dd$gene)) {
 }
 dd$imp <- lapply(paste(dd$gene, dd$exon, sep = ":"), function(k)
   if (exists(k, envir = tx_of_bin)) get(k, envir = tx_of_bin) else character(0))
-dexseq_tab <- score_tool(dd[, c("gene", "sim_type", "imp")], "DEXSeq")
+dexseq_tab <- bind_rows(dexseq_tab, score_tool(dd[, c("gene", "sim_type", "imp")], dxlab))
+}
 
 ## --- MAJIQ (LSV is the unit; whole-LSV implication) -------------------------
 cat("MAJIQ...\n")
@@ -174,7 +351,18 @@ exons_gr <- import(file.path(BASE, "ref/gencode.v28.annotation.gtf"),
   n <- length(tid); same <- tid[-n] == tid[-1]
   jstr <- paste(en_[-n], st_[-1], sep = "-")[same]
   tx_junc <- split(jstr, tid[-n][same]) }
-tsv <- read.table(file.path(BASE, "majiq/majiq_deltapsi.thr0.20.tsv"), header = TRUE,
+majiq_tab <- NULL
+## Scored for both BAM sources: the original unsplit BAMs and the
+## origin-split ones. MAJIQ is largely but not wholly immune to the antisense
+## contamination -- junctions are protected by splice-site matching, intron
+## retention is quantified from strand-blind intronic coverage.
+majiq_cfg <- list(c("", "majiq/majiq_deltapsi.thr%s.tsv"),
+                  c("_stranded", "majiq/majiq_deltapsi.stranded.thr%s.tsv"))
+for (mcfg in majiq_cfg) {
+mlab <- mcfg[1]; mpat <- mcfg[2]
+for (Cv in c("0.20", "0.10")) {
+if (!file.exists(file.path(BASE, sprintf(mpat, Cv)))) next
+tsv <- read.table(file.path(BASE, sprintf(mpat, Cv)), header = TRUE,
                   sep = "\t", quote = "", comment.char = "#", stringsAsFactors = FALSE)
 tsv$sim_type <- get_st(tsv$gene_id)
 # null-gene LSVs KEPT -- a significant LSV in a null gene is an FP call.
@@ -196,7 +384,9 @@ for (i in seq_len(nrow(tsv))) {
 mj <- data.frame(gene = vapply(mrows, `[[`, "", "gene"),
                  sim_type = vapply(mrows, `[[`, "", "sim_type"), stringsAsFactors = FALSE)
 mj$imp <- lapply(mrows, `[[`, "imp")
-majiq_tab <- score_tool(mj, "MAJIQ")
+majiq_tab <- bind_rows(majiq_tab, score_tool(mj, paste0("MAJIQ_C", Cv, mlab)))
+}
+}
 
 ## --- rMATS: implicated set = inc_tx UNION skip_tx of the significant event --
 ## (symmetric with MAJIQ: mirrored LSV significance implicates both sides'
@@ -204,7 +394,6 @@ majiq_tab <- score_tool(mj, "MAJIQ")
 cat("rMATS (inc+skip implicated sets)...\n")
 # per-transcript exon spans (for RI inclusion side)
 tx_ex <- split(data.frame(s = start(exons_gr), e = end(exons_gr)), exons_gr$transcript_id)
-rmats_imp_rows <- list()
 add_ev <- function(gene, jset, span = NULL) {
   gtx <- intersect(txdf$TXNAME[txdf$GENEID == gene], names(tx_junc))
   imp <- gtx[vapply(tx_junc[gtx], function(v) any(jset %in% v), logical(1))]
@@ -217,15 +406,48 @@ add_ev <- function(gene, jset, span = NULL) {
 }
 csv_mean <- function(x) { v <- suppressWarnings(as.numeric(strsplit(x, ",")[[1]]))
                           if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE) }
+## Reported twice: the documented per-group PSI/count filter ON (as rMATS's
+## docs recommend) and OFF. The filter is a RAW-PSI boundary guard, not an
+## effect-size threshold, so it is not the analogue of GrASE_dpi / MAJIQ_C --
+## both rows are given so its cost is visible.
+rmats_tab <- NULL
+## variants: documented gate ON (base), gate OFF, and call-side effect-size
+## thresholds on rMATS' own |IncLevelDifference| -- the true analogue of
+## GrASE_dpi / MAJIQ_C (the PSI gate is a raw-PSI boundary guard, not one).
+## Scored on BOTH count sources, matching every other tool in this table.
+## The stranded rMATS run is split by strand (rMATS renumbers events from 0 in
+## each half-run, so the halves are separate post dirs and are simply pooled
+## here -- a gene contributes to one strand only). Directory convention mirrors
+## rm_dirs in pr_curves_three_levels_gtrule.R so the two scripts agree.
+RM_UNSTR <- c(all   = "rMATS/rmats_post_group1_group2")
+RM_STR   <- c(plus  = "rMATS/stranded_plus/post",
+              minus = "rMATS/stranded_minus/post")
+rm_variants <- list(list(nm = "rMATS",                  gate = TRUE, dp = 0,   dirs = RM_UNSTR),
+                    list(nm = "rMATS_dpsi0.1",          gate = TRUE, dp = 0.1, dirs = RM_UNSTR),
+                    list(nm = "rMATS_dpsi0.2",          gate = TRUE, dp = 0.2, dirs = RM_UNSTR),
+                    list(nm = "rMATS_stranded",         gate = TRUE, dp = 0,   dirs = RM_STR),
+                    list(nm = "rMATS_stranded_dpsi0.1", gate = TRUE, dp = 0.1, dirs = RM_STR),
+                    list(nm = "rMATS_stranded_dpsi0.2", gate = TRUE, dp = 0.2, dirs = RM_STR))
+for (VAR in rm_variants) {
+GATE <- VAR$gate
+if (!any(file.exists(file.path(BASE, VAR$dirs)))) {
+  cat(sprintf("  %s: no post dir, skipped\n", VAR$nm)); next
+}
+rmats_imp_rows <- list()
+for (rmk in names(VAR$dirs)) {
 for (et in c("SE", "A3SS", "A5SS", "RI")) {
-  d <- read.table(file.path(BASE, "rMATS/rmats_post_group1_group2", paste0(et, ".MATS.JCEC.txt")),
-                  header = TRUE, sep = "\t", stringsAsFactors = FALSE, quote = "")
+  rmf <- file.path(BASE, VAR$dirs[[rmk]], paste0(et, ".MATS.JCEC.txt"))
+  if (!file.exists(rmf)) next
+  d <- read.table(rmf, header = TRUE, sep = "\t", stringsAsFactors = FALSE, quote = "")
   names(d) <- make.unique(names(d)); d$GeneID <- gsub('"', "", d$GeneID)
   c1 <- sapply(d$IJC_SAMPLE_1, csv_mean) + sapply(d$SJC_SAMPLE_1, csv_mean)
   c2 <- sapply(d$IJC_SAMPLE_2, csv_mean) + sapply(d$SJC_SAMPLE_2, csv_mean)
   p1 <- sapply(d$IncLevel1, csv_mean); p2 <- sapply(d$IncLevel2, csv_mean)
-  ok <- !is.na(d$FDR) & d$FDR < 0.01 & !is.na(c1) & c1 >= 10 & !is.na(c2) & c2 >= 10 &
+  ok <- !is.na(d$FDR) & d$FDR < 0.01
+  if (GATE) ok <- ok & !is.na(c1) & c1 >= 10 & !is.na(c2) & c2 >= 10 &
         !is.na(p1) & p1 >= 0.05 & p1 <= 0.95 & !is.na(p2) & p2 >= 0.05 & p2 <= 0.95
+  if (VAR$dp > 0) { dps <- suppressWarnings(as.numeric(d$IncLevelDifference))
+                    dps[is.na(dps)] <- 0; ok <- ok & abs(dps) >= VAR$dp }
   d <- d[ok, ]                       # null-gene events KEPT -- charged as FP
   if (nrow(d) == 0) next
   for (i in seq_len(nrow(d))) {
@@ -251,11 +473,14 @@ for (et in c("SE", "A3SS", "A5SS", "RI")) {
       list(gene = gene, sim_type = get_st(gene), imp = imp)
   }
 }
+}
+if (!length(rmats_imp_rows)) { cat(sprintf("  %s: no calls\n", VAR$nm)); next }
 rm_df <- data.frame(gene = vapply(rmats_imp_rows, `[[`, "", "gene"),
                     sim_type = vapply(rmats_imp_rows, `[[`, "", "sim_type"),
                     stringsAsFactors = FALSE)
 rm_df$imp <- lapply(rmats_imp_rows, `[[`, "imp")
-rmats_tab <- score_tool(rm_df, "rMATS")
+rmats_tab <- bind_rows(rmats_tab, score_tool(rm_df, VAR$nm))
+}
 
 ## --- report ------------------------------------------------------------------
 tab <- bind_rows(grase_tab, dexseq_tab, majiq_tab, rmats_tab)
