@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
 """
+SUPERSEDED -- do not use for manuscript figures.
+=================================================
+This script belongs to the pre-GT_rule evaluation path: it reads the gtI/gtII/
+gtIII membership ground truth from results/eval_* and the exon-only bipartition
+tests. Both were replaced in 2026-08 by GT_rule (see gt_rule_investigation.md)
+and in 2026-09 by the merged exon+SJ unit, so its numbers no longer agree with
+anything reported in the paper.
+
+The current benchmark figures and tables come from:
+
+    STRANDED=1 Rscript scripts/pr_curves_three_levels_gtrule.R   # PR + confusion
+    Rscript scripts/plot_roc_partial.R                           # partial ROC
+    Rscript scripts/plot_fp_universe_shift.R                     # FP location
+    Rscript scripts/benchmark_tables.R                           # all four tables
+
+Its outputs in plots/ and plots/tools/ are dated 2026-03 and 2026-08 and are not
+cited by any current document. Kept for provenance; regenerating them will
+produce gtI-era numbers that silently disagree with the paper.
+
 Visualize GrASE evaluation results.
 
 Three comparison groups:
