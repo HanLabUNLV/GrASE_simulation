@@ -169,6 +169,14 @@ d <- bind_rows(lapply(names(files), function(s) {
 ## construction, so every side is exon-sourced and the row branch below takes
 ## the bin path unconditionally -- identical to the pre-fold exonic script.
 if (MERGED) {
+  ## Provenance comes from the SIDECAR, by design, not from the annotated output.
+  ## exontest.R carries diff1_source/diff2_source per row (4 characters, needed
+  ## on every row by add_significant), but deliberately NOT intron_distinct1/2:
+  ## those average 123 characters and the annotated output repeats each event
+  ## ~14x on a 10-contrast run, so carrying them would add 1.47 GB to DICE's
+  ## 4.30 GB TSS/TTS file to store 422,081 facts fourteen times. This script is
+  ## the only consumer, and it needs them once per event -- which is exactly the
+  ## shape scripts/extract_merge_provenance.py writes.
   prov <- bind_rows(lapply(names(files), function(s_) {
     p <- file.path(OUT, sprintf("merge_provenance.%s.txt", s_))
     if (!file.exists(p)) stop("missing provenance file: ", p,
