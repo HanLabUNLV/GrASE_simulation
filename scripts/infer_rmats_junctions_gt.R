@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 #
-# scripts/infer_junctions_gt.R
+# scripts/infer_rmats_junctions_gt.R
 #
 # Derive junction-level ground truth for rMATS evaluation, using the
 # threshold-free STRUCTURAL ground truth from the simulation.
@@ -37,7 +37,7 @@
 #         Writes are atomic (.tmp then rename) so partial files never appear.
 #
 # Usage:
-#   Rscript infer_junctions_gt.R <rmats_dir> <gtf> <simulate_rda> <out_dir>
+#   Rscript infer_rmats_junctions_gt.R <rmats_dir> <gtf> <simulate_rda> <out_dir>
 #                                [shard_idx n_shards]
 #   With shard_idx (1-based) and n_shards, only genes in that shard are
 #   processed -- launch n_shards jobs in parallel, then combine in shell.

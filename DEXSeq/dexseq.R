@@ -38,11 +38,16 @@ print(opt)
 #}
 #
 # Assign required options
-#GFFfile = opt$gff
-#celltype1 = opt$cell1
-#celltype2 = opt$cell2
-#outdir = opt$outdir
-#countdir = opt$cntdir
+## Options override the defaults above when given, so the original invocation
+## (no arguments) still reproduces the pre-2026-09 run exactly. Used to point at
+## DEXSeq/count_files_stranded, where the antisense contamination and the
+## half-depth loss from --stranded reverse are both fixed
+## (see ../stranded_reconstruction.md).
+if (!is.null(opt$gff))     GFFfile   <- opt$gff
+if (!is.null(opt$cell1))   celltype1 <- opt$cell1
+if (!is.null(opt$cell2))   celltype2 <- opt$cell2
+if (!is.null(opt$outdir))  outdir    <- opt$outdir
+if (!is.null(opt$cntdir))  countdir  <- opt$cntdir
 if (!dir.exists(outdir)) {
   dir.create(outdir, recursive = TRUE)
 }
@@ -134,7 +139,14 @@ print(dim(dxd))
 #}
 #print(dim(dxd))
 
-Explist = list(dxd_filteredbyCount=dxd_filteredbyCount, dxd_filteredbyCountMultiExon = dxd_filteredbyCountMultiExon)
+## Only the MultiExon set is analysed. DEXSeq tests differential exon USAGE --
+## a bin's share of its own gene, via the condition:exon interaction -- so a gene
+## reduced to a single surviving bin has no "rest of the gene" to form a ratio
+## against and its test is degenerate. dxd_filteredbyCount was written but
+## nothing downstream ever read it: both transcript_level_metrics.R and
+## pr_curves_three_levels_gtrule.R take all.*.dxd_filteredbyCountMultiExon.txt.
+## Dropping it halves the dispersion-estimation time.
+Explist = list(dxd_filteredbyCountMultiExon = dxd_filteredbyCountMultiExon)
 for (expnum in 1:(length(Explist)) ) {
   dxdfile = paste0(outdir,"/dxd.",celltype1,"_",celltype2,".",names(Explist)[expnum],".rds")
   dxd = Explist[[expnum]]

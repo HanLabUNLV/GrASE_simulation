@@ -39,7 +39,15 @@ o <- order(ex$transcript_id, start(ex)); tid <- ex$transcript_id[o]
 st <- start(ex)[o]; en <- end(ex)[o]; n <- length(tid); sm <- tid[-n] == tid[-1]
 tx_junc <- split(paste(en[-n], st[-1], sep = "-")[sm], tid[-n][sm])
 
-tsv <- read.table(file.path(BASE, "majiq/majiq_deltapsi.thr0.20.tsv"), header = TRUE,
+## STRANDED=1 enumerates the universe from the origin-split MAJIQ build. This
+## matters because the universe is DATA-dependent (it is whatever LSVs MAJIQ
+## found), unlike the GT labels, which are design-based. Scoring the stranded
+## run against the old build's 50,489 LSVs charges it 55 GT-positive LSVs it
+## never tested.
+STRANDED <- nzchar(Sys.getenv("STRANDED"))
+MAJIQ_TSV <- if (STRANDED) "majiq/majiq_deltapsi.stranded.thr0.20.tsv" else "majiq/majiq_deltapsi.thr0.20.tsv"
+KEYS_OUT  <- if (STRANDED) "lsv_junction_keys.stranded.txt" else "lsv_junction_keys.txt"
+tsv <- read.table(file.path(BASE, MAJIQ_TSV), header = TRUE,
                   sep = "\t", quote = "", comment.char = "#", stringsAsFactors = FALSE)
 tsv$sim_type <- get_st(tsv$gene_id)
 cat(sprintf("LSVs in voila tsv: %d\n", nrow(tsv)))
@@ -72,7 +80,7 @@ for (i in seq_len(nrow(tsv))) {
 j <- bind_rows(rows[!sapply(rows, is.null)])
 cat(sprintf("\nfield-length mismatches vs K: probability_changing %d, mean_dpsi %d, num_junctions %d\n",
             n_mis_p, n_mis_d, n_mis_K))
-f <- file.path(OUT, "lsv_junction_keys.txt")
+f <- file.path(OUT, KEYS_OUT)
 write.table(j, f, sep = "\t", quote = FALSE, row.names = FALSE)
 cat(sprintf("wrote %d junctions from %d LSVs -> %s\n", nrow(j), length(unique(j$lsv_id)), f))
 cat("junctions per LSV (K):\n"); print(summary(j$K))

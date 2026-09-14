@@ -54,7 +54,9 @@ manip_vec <- iso.dtu | iso.dte          # aligned; c() would duplicate names
 M <- names(which(manip_vec))
 cat(sprintf("manipulated transcripts: %d\n", length(M)))
 
-j <- read.table(file.path(BASE, "results/gt/lsv_junction_keys.txt"), header = TRUE,
+STRANDED <- nzchar(Sys.getenv("STRANDED"))
+KEYS_IN <- if (STRANDED) "results/gt/lsv_junction_keys.stranded.txt" else "results/gt/lsv_junction_keys.txt"
+j <- read.table(file.path(BASE, KEYS_IN), header = TRUE,
                 sep = "\t", quote = "", stringsAsFactors = FALSE)
 cat(sprintf("junctions: %d  LSVs: %d\n", nrow(j), length(unique(j$lsv_id))))
 
@@ -105,7 +107,8 @@ j$true_dpsi_eff <- ifelse(one_zero, 1, ifelse(is.na(j$true_dpsi_tpm), 0, j$true_
 j$gt_positive_sym <- j$manip_mass_changed & j$true_dpsi_eff > EPS
 j$GT_rule_junction <- j$gt_positive_sym    # canonical name; gt_positive_sym kept as an alias
 
-OUT <- file.path(BASE, "results/gt/lsv_junction_gt.txt")
+OUT <- file.path(BASE, if (STRANDED) "results/gt/lsv_junction_gt.stranded.txt"
+                       else "results/gt/lsv_junction_gt.txt")
 write.table(j, OUT, sep = "\t", quote = FALSE, row.names = FALSE)
 cat(sprintf("wrote %s\n", OUT))
 
@@ -124,7 +127,8 @@ lsv <- j %>%
             n_manip_users  = sum(n_manip_own, na.rm = TRUE),
             .groups = "drop")
 lsv$max_true_dpsi[!is.finite(lsv$max_true_dpsi)] <- NA_real_
-LOUT <- file.path(BASE, "results/gt/lsv_gt.txt")
+LOUT <- file.path(BASE, if (STRANDED) "results/gt/lsv_gt.stranded.txt"
+                        else "results/gt/lsv_gt.txt")
 write.table(lsv, LOUT, sep = "\t", quote = FALSE, row.names = FALSE)
 cat(sprintf("\nwrote %d LSVs -> %s (GT_rule, rolled up from junctions)\n", nrow(lsv), LOUT))
 cat("\n=== LSV-level GT_rule ===\n")

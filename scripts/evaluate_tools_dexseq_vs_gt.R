@@ -5,7 +5,7 @@
 # Evaluate DEXSeq (exon-bin GT) and rMATS (junction-level GT) against
 # simulation ground truth.
 #
-# rMATS: evaluated using junction-level GT from infer_junctions_gt.R
+# rMATS: evaluated using junction-level GT from infer_rmats_junctions_gt.R
 #   Event files : <rmats_dir>/{SE,A3SS,A5SS,RI}.MATS.JCEC.txt
 #   Junction GT : <junction_gt_file> (sim_junction_gt.txt)
 #

@@ -76,8 +76,18 @@ parse_gff <- function(path) {
   list(len = setNames(en - st + 1, bn), tx = setNames(tx, bn))
 }
 
-files <- c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-           "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+## Source tests are overridable so the same rule can be applied to the
+## strand-reconstructed run. GT_RULE_STRANDED=1 points at the stranded tests and
+## writes bipartition_gt.stranded.txt; unset reproduces the original exactly.
+STRANDED <- nzchar(Sys.getenv("GT_RULE_STRANDED"))
+files <- if (STRANDED) {
+  c("bipartition.internal.stranded.test.EBapprox/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
+    "bipartition.TSSTTS.stranded.test.EBapprox/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+} else {
+  c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
+    "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+}
+GT_OUT <- if (STRANDED) "bipartition_gt.stranded.txt" else "bipartition_gt.txt"
 d <- bind_rows(lapply(files, function(f) {
   x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
                   comment.char = "", stringsAsFactors = FALSE)
@@ -186,9 +196,9 @@ r$GT_rule_bipartition <- r$gt_positive   # canonical name; gt_positive kept as a
 
 cat(sprintf("\nzero-mass tests: both conditions %d, one condition %d\n",
             sum(both_zero), sum(one_zero)))
-write.table(r, file.path(OUT, "bipartition_gt.txt"), sep = "\t",
+write.table(r, file.path(OUT, GT_OUT), sep = "\t",
             quote = FALSE, row.names = FALSE)
-cat(sprintf("wrote %d tests -> %s (GT_rule_bipartition)\n", nrow(r), file.path(OUT, "bipartition_gt.txt")))
+cat(sprintf("wrote %d tests -> %s (GT_rule_bipartition)\n", nrow(r), file.path(OUT, GT_OUT)))
 
 cat("\n=== GT totals (binary, no floor, nothing excluded) ===\n")
 print(table(sim_type = r$sim_type, gt_positive = r$gt_positive))
