@@ -214,6 +214,22 @@ gr$imp <- lapply(gr$txs, parse_l, sep = ",")
 ## readmit exactly the reference-dominated events the filter exists to drop.
 DELTA <- 0
 
+## SJAWARE=1 applies the SHIPPED dpi gate instead of a uniform one: exontest.R
+## defaults to --min_dpi 0.1 --min_dpi_sj 0.05, so a side whose distinct set came
+## from split reads clears a lower bar. Split-read distinct counts sit on a lower
+## pi scale than the exonic shared reference, so one absolute threshold demands a
+## larger odds shift from a junction-sourced side. Unset reproduces the uniform
+## gate the published tables were built with.
+SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
+MIN_DPI_SJ <- 0.05
+if (SJAWARE) cat(sprintf("*** source-aware dpi gate: sj sides use %.2f ***\n", MIN_DPI_SJ))
+## per-row dpi threshold for a nominal gate dp
+dpi_thr <- function(d, dp) {
+  if (!SJAWARE) return(rep(dp, nrow(d)))
+  sd <- ifelse(grepl("diff1", d$comparison), d$setdiff1, d$setdiff2)
+  ifelse(is.na(sd) | sd %in% c("NA", ""), MIN_DPI_SJ, dp)
+}
+
 two_stage <- function(pv, gene, padj_gene) {
   within <- ave(pv, gene, FUN = function(x) p.adjust(x, method = "BH"))
   pmax(within, padj_gene)
@@ -248,7 +264,7 @@ cat(sprintf("  GrASE_internal: %d of %d tests (universe restricted)\n", sum(ki),
 ## Without these the curves compare MAJIQ WITH an effect-size threshold against
 ## GrASE WITHOUT one, which is not a like-for-like operating characteristic.
 for (dp in c(0.1, 0.2)) {
-  k <- lfcok & !is.na(gr$padj2) & !is.na(gr$delta_pi) & abs(gr$delta_pi) >= dp
+  k <- lfcok & !is.na(gr$padj2) & !is.na(gr$delta_pi) & abs(gr$delta_pi) >= dpi_thr(gr, dp)
   ## Keep EVERY tested unit in the call list and make filtered-out tests
   ## un-callable (padj set to 1, lower_better). Subsetting gr instead would
   ## shrink `all_units`, and recall's denominator (upos_restr) is computed from
@@ -302,7 +318,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   ## subsetting here would shrink all_units and make recall rise under a
   ## stricter filter).
   for (dp in c(0.1, 0.2)) {
-    mk <- mlfcok & !is.na(mg$padj2) & !is.na(mg$delta_pi) & abs(mg$delta_pi) >= dp
+    mk <- mlfcok & !is.na(mg$padj2) & !is.na(mg$delta_pi) & abs(mg$delta_pi) >= dpi_thr(mg, dp)
     mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
     calls[[sprintf("GrASE_merged_dpi%.1f", dp)]] <- list(
       gene = mg$gene, stat = mstk, gene_stat = mg$padj_gene,
@@ -618,6 +634,13 @@ for (tool in names(calls)) {
   hit_unit <- vapply(cl$imp, function(v) any(v %in% cat_tx), logical(1))
   for (thr in GRIDS[[tool]]) {
     sig <- if (cl$lower_better) cl$stat < thr else cl$stat >= thr
+    ## A test with no statistic is a NON-CALL, not an unknown. Without this,
+    ## ctp <- sum(sig & hit_unit) returns NA and silently voids the whole
+    ## call-level row. GrASE_BH is the exposed one: its stat is a plain
+    ## p.adjust() over raw p-values, which returns NA wherever exontest.R's
+    ## read-support filter set p.value <- NA. The unit and gene paths already
+    ## guard with !is.na(padj2); this closes the same hole for every tool.
+    sig[is.na(sig)] <- FALSE
     if (!any(sig)) next
     ## --- UNIT ---
     su <- unique(unlist(cl$units[sig]))
@@ -645,6 +668,7 @@ for (tool in names(calls)) {
     ## sharing the Background null fixes it, at the cost of DTE/DTU no longer
     ## partitioning with Background. The pooled ALL panel is unchanged.)
     sig0 <- if (cl0$lower_better) cl0$stat < thr else cl0$stat >= thr
+    sig0[is.na(sig0)] <- FALSE
     stx  <- unique(unlist(cl$imp[sig]));  stx0 <- unique(unlist(cl0$imp[sig0]))
     sg   <- unique(cl$gene[sig]);         sg0  <- unique(cl0$gene[sig0])
     if (is_null_cat) {           # null categories: every call here is false
