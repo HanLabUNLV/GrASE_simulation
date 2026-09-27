@@ -11,7 +11,7 @@
 # the read floor when diff1/diff2 are absent), so this arm is unfiltered while
 # bipartition and n_choose_2 are floored at 10. State that in the caption.
 #
-# Usage: bash scripts/run_eval_multinomial_stranded.sh
+# Usage: bash scripts/51_eval_multinomial.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EVAL=scripts/evaluate_multinomial_test.R

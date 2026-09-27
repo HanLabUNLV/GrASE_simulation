@@ -2,7 +2,7 @@
 # "What if no read floor anywhere in the cross comparison?"
 #
 # bipartition: FREE -- the pre-filter state was snapshotted as
-#   *.annotated.txt.bak_premin_reads by scripts/rerun_stranded_min_reads.sh,
+#   *.annotated.txt.bak_premin_reads by scripts/20_tests_bipartition_minreads.sh,
 #   so it is evaluated directly, no re-test needed.
 # n_choose_2 : needs a real re-test at --min_reads=0. The floor sets
 #   p.value <- NA BEFORE adjustment, so the raw p-values of filtered rows are
@@ -10,7 +10,7 @@
 #   there is no post-hoc shortcut.
 # multinomial: already has no floor, so it is unchanged and not rerun.
 #
-# Usage: bash scripts/run_nofloor_experiment.sh
+# Usage: bash scripts/72_cross_nofloor_experiment.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EVAL=scripts/evaluate_bipartition_test.R

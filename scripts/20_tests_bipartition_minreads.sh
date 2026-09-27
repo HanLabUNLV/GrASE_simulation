@@ -11,7 +11,7 @@
 # outdir, so nothing is refit -- this re-runs adjustment + annotation only.
 # Do NOT delete the ckpt files or this becomes a multi-day job.
 #
-# Usage: bash scripts/rerun_stranded_min_reads.sh
+# Usage: bash scripts/20_tests_bipartition_minreads.sh
 set -eu
 BASE=/mnt/data1/home/mirahan/GrASE_simulation
 R=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

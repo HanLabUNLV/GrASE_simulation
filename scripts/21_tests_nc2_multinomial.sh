@@ -12,7 +12,7 @@
 # One axis stays unmatched: bipartition uses the merged exon+SJ unit and no
 # merged counts exist for the other two structures. State that in the caption.
 #
-# Usage: bash scripts/run_stranded_tests_nc2_multi.sh
+# Usage: bash scripts/21_tests_nc2_multinomial.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

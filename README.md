@@ -93,3 +93,50 @@ parallel -j 12 bash STAR/08_pass2.sh group2 {} :::: group.list
 ## Notes
 *   **File Paths**: The scripts currently contain hardcoded paths (e.g., `$HOME/Love_simulation/...`). You may need to adjust these variables in the scripts to match your directory structure.
 *   **Sample Naming**: `02_pass1.sh` and `08_pass2.sh` may have hardcoded strings for `sample_01` or `sample_02`. Verify these match your data before running.
+
+## 3. GrASE analysis pipeline
+
+Drivers in `scripts/` are numbered in execution order. Numbering is in tens so
+a stage can be inserted later without renumbering the rest. Each driver is an
+entry point -- they are not called by one another, so a stage can be rerun on
+its own provided its inputs exist.
+
+| stage | driver | what it does |
+|-------|--------|--------------|
+| 10 | `10_counts_nc2_multinomial.sh` | exonic-part counts for the n_choose_2 and multinomial splits |
+| 20 | `20_tests_bipartition_minreads.sh` | the four bipartition exontest arms, with the pre-testing read floor |
+| 21 | `21_tests_nc2_multinomial.sh` | exontest for n_choose_2 and multinomial |
+| 22 | `22_tests_multinomial.sh` | multinomial arms only |
+| 23 | `23_tests_nc2_nofloor.sh` | n_choose_2 re-tested with `--min_reads=0` |
+| 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest |
+| 40 | `40_gt_junctions.sh` | junction-level structural ground truth |
+| 41 | `41_gt_junctions_stranded.sh` | the same, for the stranded rMATS runs |
+| 50 | `50_eval_nc2.sh` | evaluate the n_choose_2 results |
+| 51 | `51_eval_multinomial.sh` | evaluate the multinomial results |
+| 52 | `52_eval_nc2_nofloor.sh` | evaluate the no-floor n_choose_2 results |
+| 53 | `53_eval_modelcomp.sh` | per-model evaluations on the merged results |
+| 60 | `60_modelcomp_internal.sh` | model comparison, internal arm |
+| 61 | `61_modelcomp_tsstts.sh` | model comparison, TSS/TTS arm |
+| 62 | `62_modelcomp_gtrule_stratified.sh` | model comparison stratified by simulation category |
+| 70 | `70_cross_majiq_modulize.sh` | voila modulize: MAJIQ event-type classification |
+| 71 | `71_cross_nofloor.sh` | cross-tool panel, no read floor |
+| 72 | `72_cross_nofloor_experiment.sh` | no-read-floor experiment across all structures |
+| 73 | `73_cross_confusion.sh` | cross-comparison panels, horizontal confusion counts |
+| 80 | `80_plots_model_comparison.sh` | within-bipartition model comparison panels |
+| 81 | `81_plots_delta_sweep.sh` | post-hoc `lfc_diff_net` (delta) sweep |
+| 82 | `82_plots_posthoc_lfc.sh` | post-hoc lfc filter evaluation |
+
+Stages 01-02 (download, STAR alignment) are documented above; `STAR/` keeps its
+own `00_`-`08_` numbering.
+
+### Conventions
+
+- **Outputs are never committed.** `.gitignore` excludes logs, run markers,
+  `*.bak*`, archives, alignments, binary outputs and the output directories.
+  Note three of those directories are *symlinks*; git treats a symlink as a
+  file, so the directory-only patterns need non-slash variants beside them.
+- **Tool directories** (`STAR/`, `majiq/`, `rMATS/`, `DEXSeq/`, `saturn/`) keep
+  their scripts and drop their run products, via `<dir>/*` plus
+  `!<dir>/*.sh|*.R|*.py`.
+- **Only drivers and the helpers they invoke are tracked.** Investigative and
+  one-off scripts are left untracked on purpose.

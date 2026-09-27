@@ -14,7 +14,7 @@
 # Only -c (count files) and -o (output) differ from the original unstranded
 # invocations in scripts/command.txt.
 #
-# Usage: bash scripts/run_stranded_counts_nc2_multi.sh
+# Usage: bash scripts/10_counts_nc2_multinomial.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

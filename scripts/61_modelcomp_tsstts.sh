@@ -1,6 +1,6 @@
 #!/bin/bash
 # The TSS/TTS half of the stranded-merged model comparison. The internal half is
-# scripts/run_modelcomp_stranded.sh; evaluate_bipartition_test.R takes the two
+# scripts/60_modelcomp_internal.sh; evaluate_bipartition_test.R takes the two
 # arms comma-separated, so both are needed before the PR-across-models figure
 # can be regenerated.
 #
@@ -13,7 +13,7 @@
 # Order is wilcoxon -> MLE -> EBmap, cheapest first, so a failure surfaces early
 # rather than after the multi-hour run.
 #
-# Usage: bash scripts/run_modelcomp_stranded_tss.sh
+# Usage: bash scripts/61_modelcomp_tsstts.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Everything downstream of the merged (exon + split-read) exontest runs.
 #
-# Usage: bash scripts/run_merged_downstream.sh [stranded|unstranded]
+# Usage: bash scripts/30_merge_downstream.sh [stranded|unstranded]
 #        (default: stranded -- the lane the manuscript reports)
 #
 # LANE IS NOT COSMETIC. Three different env vars select it, with three

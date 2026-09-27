@@ -9,7 +9,7 @@
 #
 # internal runs first (~7 min); TSSTTS is the long one (~6.5 h).
 #
-# Usage: bash scripts/run_nc2_nofloor_tests.sh
+# Usage: bash scripts/23_tests_nc2_nofloor.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

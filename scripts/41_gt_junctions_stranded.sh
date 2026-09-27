@@ -10,7 +10,7 @@
 # Gene sets are disjoint between strands, so the two halves never collide at the
 # gene level; the prefix only disambiguates the numeric event IDs.
 #
-# Usage: bash scripts/run_infer_junctions_gt_stranded.sh [n_shards]   (default 8)
+# Usage: bash scripts/41_gt_junctions_stranded.sh [n_shards]   (default 8)
 set -euo pipefail
 SIM=$HOME/GrASE_simulation
 GTF=$SIM/ref/gencode.v28.annotation.gtf

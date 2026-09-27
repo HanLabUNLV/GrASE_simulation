@@ -8,9 +8,9 @@
 # points at the ordinary dir. Nothing is copied and nothing existing is
 # modified.
 #
-# gtI is pinned explicitly, matching scripts/run_cross_confusion_horiz.sh.
+# gtI is pinned explicitly, matching scripts/73_cross_confusion.sh.
 #
-# Usage: bash scripts/run_cross_nofloor.sh
+# Usage: bash scripts/71_cross_nofloor.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 PY=/mnt/data1/home/jaquino/miniconda3/envs/py38/bin/python3

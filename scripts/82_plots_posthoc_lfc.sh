@@ -6,7 +6,7 @@
 # Note the merged arm names its outputs test_bipartition.merged_*, not
 # test_bipartition.{internal,TSSTTS}_*.
 #
-# Usage: bash scripts/run_posthoc_lfc_stranded.sh [delta]
+# Usage: bash scripts/82_plots_posthoc_lfc.sh [delta]
 set -eu
 SIM_DIR=/mnt/data1/home/mirahan/GrASE_simulation
 SCRIPT_DIR=/mnt/data1/home/mirahan/GrASE_simulation/scripts

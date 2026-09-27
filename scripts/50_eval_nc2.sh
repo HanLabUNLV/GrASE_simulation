@@ -10,7 +10,7 @@
 # The previous eval dirs are moved aside to *.pre_stranded rather than
 # overwritten, so the old numbers stay recoverable.
 #
-# Usage: bash scripts/run_eval_nc2_stranded.sh
+# Usage: bash scripts/50_eval_nc2.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EVAL=scripts/evaluate_bipartition_test.R

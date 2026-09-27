@@ -4,7 +4,7 @@
 # DTU, so the Background and DGE false-positive counts quoted in the results text
 # can only come from here.
 #
-# Usage: bash scripts/run_modelcomp_evals_stranded.sh
+# Usage: bash scripts/53_eval_modelcomp.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EV=scripts/evaluate_bipartition_test.R

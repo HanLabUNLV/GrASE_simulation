@@ -2,11 +2,11 @@
 # Evaluate the n_choose_2 NO-FLOOR tests (--min_reads=0, run 09-20) so they can
 # be compared against the floored evals already in results/eval_n_choose_2_*.
 #
-# Same evaluator, GT and simulate.rda as scripts/run_eval_nc2_stranded.sh --
+# Same evaluator, GT and simulate.rda as scripts/50_eval_nc2.sh --
 # only the test directory changes, so the floor is the single difference.
 # Writes to *.nofloor dirs; nothing existing is overwritten.
 #
-# Usage: bash scripts/run_eval_nc2_nofloor.sh
+# Usage: bash scripts/52_eval_nc2_nofloor.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EVAL=scripts/evaluate_bipartition_test.R

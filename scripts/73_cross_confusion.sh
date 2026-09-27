@@ -4,7 +4,7 @@
 # vertically. Per-panel width is unchanged, so bar width and bar spacing are
 # identical to the vertical version -- only the panel arrangement differs.
 #
-# Usage: bash scripts/run_cross_confusion_horiz.sh
+# Usage: bash scripts/73_cross_confusion.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 PY=/mnt/data1/home/jaquino/miniconda3/envs/py38/bin/python3

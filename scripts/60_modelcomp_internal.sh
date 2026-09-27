@@ -15,7 +15,7 @@
 # the model, so the same sides are dropped from all four. Pass --min_reads 0 if
 # you want the low-support regime, where the models differ most.
 #
-# Usage: bash scripts/run_modelcomp_stranded.sh
+# Usage: bash scripts/60_modelcomp_internal.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts

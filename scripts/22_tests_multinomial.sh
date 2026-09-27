@@ -6,7 +6,7 @@
 # exontest.R now guards that block, so multinomial runs with --min_reads NOT
 # applied (the floor has no definition without a distinct/reference split).
 #
-# Usage: bash scripts/run_stranded_tests_multi.sh
+# Usage: bash scripts/22_tests_multinomial.sh
 set -u
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts
