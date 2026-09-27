@@ -1,0 +1,93 @@
+# GrASE_simulation: track scripts and documentation, ignore runs and outputs.
+#
+# The repo is a working analysis directory: 100+ output directories and
+# hundreds of logs accumulate beside the scripts that produce them. Only the
+# scripts, drivers and notes are worth versioning -- everything they emit is
+# regenerable from them.
+
+# --- logs, run markers, editor and ad-hoc backups ---
+*.log
+*.running
+*.bak
+*.bak_*
+*~
+.Rhistory
+.RData
+.Rproj.user
+
+# --- scratch drivers ---
+tmp.sh
+tmp2.sh
+tmp.*.sh
+
+# --- large inputs, archives, alignments ---
+*.tgz
+*.tar
+*.gz
+*.bam
+*.bai
+*.sam
+
+# --- binary / regenerable outputs ---
+*.rds
+*.rda
+*.pdf
+*.png
+*.svg
+
+# --- output directories (regenerable) ---
+bipartition*/
+n_choose_2*/
+multinomial*/
+results*/
+posthoc_lfc_filter*/
+lfc_delta_sweep*/
+sjcnt*/
+counts.*/
+plots*/
+graphml*/
+dexseq.gff/
+test*/
+B_CD8_*/
+swimdown/
+strand_recon/
+sgplot/
+graseplot/
+bubbles/
+map_rmats/
+example/
+old/
+scripts2rm/
+gtf/
+ref/
+data/
+
+# Symlinks to output directories. Git treats a symlink as a FILE, so the
+# directory-only patterns above (trailing slash) do not match them.
+bipartition.test*
+results
+results.*
+plots
+plots.*
+
+# --- mixed directories: keep the scripts, drop the run products ---
+STAR/*
+!STAR/*.sh
+!STAR/*.R
+!STAR/*.py
+majiq/*
+!majiq/*.sh
+!majiq/*.R
+!majiq/*.py
+rMATS/*
+!rMATS/*.sh
+!rMATS/*.R
+!rMATS/*.py
+DEXSeq/*
+!DEXSeq/*.sh
+!DEXSeq/*.R
+!DEXSeq/*.py
+saturn/*
+!saturn/*.sh
+!saturn/*.R
+!saturn/*.py
