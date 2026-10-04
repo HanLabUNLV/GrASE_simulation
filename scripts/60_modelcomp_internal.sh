@@ -24,17 +24,26 @@ SRC=bipartition.merged.stranded.test.EBapprox
 OUT=bipartition.merged.stranded.test.modelcomp
 mkdir -p $OUT
 
-# phi estimated from these counts, plus the already-computed EBapprox result
-for f in phi.merged.stranded.txt phi.merged.stranded.approx.moderated.txt \
-         test_bipartition.merged_betabinom_EBapprox.txt; do
-  [ -e "$OUT/$f" ] || cp "$SRC/$f" "$OUT/$f"
+# phi estimated from these counts, plus the already-computed EBapprox result.
+# The EBapprox run tags its phi output with the model name, so the files are
+# copied under the untagged names this script passes to --phi. Both EBapprox and
+# EBmap then read the SAME phi -- a per-model phi would confound the model
+# comparison with the dispersion estimate.
+cp -n "$SRC/phi.merged.stranded.EBapprox.txt" \
+      "$OUT/phi.merged.stranded.txt"
+cp -n "$SRC/phi.merged.stranded.EBapprox.approx.moderated.txt" \
+      "$OUT/phi.merged.stranded.approx.moderated.txt"
+# EBapprox itself is not refit; eval_modelcomp.sh reads the annotated form.
+for f in test_bipartition.merged_betabinom_EBapprox.txt \
+         test_bipartition.merged_betabinom_EBapprox.annotated.txt; do
+  cp -n "$SRC/$f" "$OUT/$f"
 done
 
 run () {   # run <model> [extra args]
   local m=$1; shift
   echo "=== $m ==="
   Rscript $S/exontest.R \
-    --file bipartition.merged.exoncnt.combined.txt \
+    --file bipartition.merged.stranded.internal.exoncnt.combined.txt \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
     --cond1 group1 --cond2 group2 "$@" \

@@ -126,4 +126,29 @@ for (uni in c("restricted","full")) {
   md(c("tool","Universe","TP","FP","FN","TN","n_pos","n_neg","Precision","Recall"), out)
 }
 write.table(bind_rows(rows), file.path(OUT,"gene_level_table_fmt.txt"), sep="\t", quote=FALSE, row.names=FALSE)
-cat(sprintf("\nwrote 4 tables to %s\n", OUT))
+## --- 5. bubble-class attribution (Table 6) ---------------------------------
+## Computed by transcript_level_metrics.R, which owns the manipulated-transcript
+## truth and the internal/TSSTTS src tag; formatted here with the other tables.
+## The Total row reconciles with the transcript table: recovered(internal) +
+## recovered(TSSTTS) - both = the GrASE_dpi0 row's TP.
+attf <- file.path(OUT, "tsstts_attribution.txt")
+if (file.exists(attf)) {
+  at <- read.table(attf, header=TRUE, sep="\t", stringsAsFactors=FALSE,
+                   check.names=FALSE)
+  out <- character(0)
+  for (i in seq_len(nrow(at)))
+    out <- c(out, sprintf("| %s | %s | %s | %s |\n", at$class[i],
+             cm(at$ALL[i]), cm(at$DTE[i]), cm(at$DTU[i])))
+  cat("\n### bubble class recovering each manipulated transcript\n")
+  md(c(" ","ALL","DTE","DTU"), out)
+  tot <- at$ALL[at$class == "Total"]
+  pc  <- round(100 * at$ALL / tot)
+  cat(sprintf("\nin-text: %s (%d%%) TSS/TTS only, %s (%d%%) internal only, %s (%d%%) both, of %s recovered\n",
+      cm(at$ALL[at$class=="TSS/TTS only"]),  pc[at$class=="TSS/TTS only"],
+      cm(at$ALL[at$class=="internal only"]), pc[at$class=="internal only"],
+      cm(at$ALL[at$class=="both"]),          pc[at$class=="both"], cm(tot)))
+} else {
+  cat("\nNOTE: tsstts_attribution.txt absent -- run transcript_level_metrics.R\n")
+}
+
+cat(sprintf("\nwrote 5 tables to %s\n", OUT))

@@ -3,7 +3,7 @@
 # EBapprox results, scored under GT_rule at the unit level -- the same
 # framework as the model comparison (pr_curves_models.R) and Figure 2.
 #
-# The existing 82_plots_posthoc_lfc.sh sweeps the same delta but scores
+# The existing plots_posthoc_lfc_gtIII.sh sweeps the same delta but scores
 # under gtIII (results/sim_exon_info, exonic-part level). Both are valid; they
 # are not interchangeable, so do not mix their numbers in one paragraph.
 #

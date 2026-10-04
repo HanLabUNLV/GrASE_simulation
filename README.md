@@ -16,7 +16,7 @@ Ensure the following tools are installed and available in your PATH:
 ### Download Data
 Run the `wget.sh` script to download the simulated datasets from Zenodo.
 ```bash
-bash wget.sh
+bash data/wget.sh
 ```
 
 ### Extract Archives
@@ -107,24 +107,53 @@ its own provided its inputs exist.
 | 20 | `20_tests_bipartition_minreads.sh` | the four bipartition exontest arms, with the pre-testing read floor |
 | 21 | `21_tests_nc2_multinomial.sh` | exontest for n_choose_2 and multinomial |
 | 22 | `22_tests_multinomial.sh` | multinomial arms only |
-| 23 | `23_tests_nc2_nofloor.sh` | n_choose_2 re-tested with `--min_reads=0` |
-| 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest |
-| 40 | `40_gt_junctions.sh` | junction-level structural ground truth |
-| 41 | `41_gt_junctions_stranded.sh` | the same, for the stranded rMATS runs |
+| 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest; also builds the gene-level tables |
+| 41 | `41_gt_junctions_stranded.sh` | junction-level structural ground truth, stranded rMATS runs |
 | 50 | `50_eval_nc2.sh` | evaluate the n_choose_2 results |
 | 51 | `51_eval_multinomial.sh` | evaluate the multinomial results |
-| 52 | `52_eval_nc2_nofloor.sh` | evaluate the no-floor n_choose_2 results |
-| 53 | `53_eval_modelcomp.sh` | per-model evaluations on the merged results |
 | 60 | `60_modelcomp_internal.sh` | model comparison, internal arm |
 | 61 | `61_modelcomp_tsstts.sh` | model comparison, TSS/TTS arm |
-| 62 | `62_modelcomp_gtrule_stratified.sh` | model comparison stratified by simulation category |
+| 62 | `62_modelcomp_gtrule_stratified.sh` | precision and recall per model (EBapprox, EBmap, MLE, wilcoxon), split by simulation category |
 | 70 | `70_cross_majiq_modulize.sh` | voila modulize: MAJIQ event-type classification |
-| 71 | `71_cross_nofloor.sh` | cross-tool panel, no read floor |
-| 72 | `72_cross_nofloor_experiment.sh` | no-read-floor experiment across all structures |
-| 73 | `73_cross_confusion.sh` | cross-comparison panels, horizontal confusion counts |
-| 80 | `80_plots_model_comparison.sh` | within-bipartition model comparison panels |
-| 81 | `81_plots_delta_sweep.sh` | post-hoc `lfc_diff_net` (delta) sweep |
-| 82 | `82_plots_posthoc_lfc.sh` | post-hoc lfc filter evaluation |
+| 73 | `73_cross_confusion.sh` | precision and recall for the three comparison structures (bipartition, n_choose_2, multinomial), with null-gene confusion counts; gtI by design, see below |
+| 80 | `80_plots_model_comparison.sh` | within-bipartition dispersion and effect-size scatter, EBapprox vs EBmap vs MLE |
+| 81 | `81_plots_delta_sweep.sh` | null-gene false positives and DTE/DTU precision as the `lfc_diff_net` threshold is swept |
+| 84 | `84_plots_roc_fp.sh` | partial ROC in transcript and gene space, and the FP-location panel |
+| 85 | `85_tables_manuscript.sh` | native-unit, structural-reach, transcript-level, gene-level and TSS/TTS attribution tables |
+
+Describe what a script produces rather than citing a figure or table number.
+Both the numbering and the paragraph order change with every revision, so a
+reference like "the Figure 4 numbers" goes stale silently.
+
+PR and ROC curves start at **padj 0.001** (1e-4 trimmed; MAJIQ keeps its
+probability grid). That is set in `pr_curves_three_levels_gtrule.R`,
+`plot_roc_partial.R`, `pr_dte_dtu_by_universe.R` and `roc_dte_dtu_by_universe.R`,
+and all four must agree or the panels stop being comparable.
+
+**The comparison-structure panels are deliberately scored under gtI, not
+GT_rule**, because GT_rule could not be defined for the multinomial comparison.
+`visualize_eval.py` carries a blanket "SUPERSEDED" header that is correct for
+everything else it produces but does not apply to those panels. Do not
+regenerate them under GT_rule.
+
+### Demoted one-offs (untracked, no numeric prefix)
+
+These produce nothing that appears in the manuscript, so they were taken out of
+the numbered sequence. They remain on disk; the gaps at 23, 40, 52, 53, 63, 71,
+72 and 82 are theirs.
+
+| script | why it is not a stage |
+|--------|----------------------|
+| `tests_nc2_nofloor.sh`, `eval_nc2_nofloor.sh` | the no-floor arm; "nofloor" appears nowhere in the manuscript |
+| `cross_nofloor.sh`, `cross_nofloor_experiment.sh` | same, cross-tool |
+| `gt_junctions_unstranded.sh` | unstranded junction GT; `41_` is independent of it and all reported results are stranded |
+| `eval_modelcomp.sh` | scores under gtIII on `results/sim_exon_info`; the reported model comparison comes from `62_` |
+| `plots_posthoc_lfc_gtIII.sh` | likewise gtIII; the reported filter sweep comes from `81_` |
+| `modelcomp_rerun_meanrule.sh` | one-off wrapper that stages `60_`/`61_` into clean output dirs |
+
+The last two are the trap worth remembering: they score the same models as `62_`
+and `81_` but against a different unit and ground truth, so their numbers look
+plausible and are not interchangeable.
 
 Stages 01-02 (download, STAR alignment) are documented above; `STAR/` keeps its
 own `00_`-`08_` numbering.

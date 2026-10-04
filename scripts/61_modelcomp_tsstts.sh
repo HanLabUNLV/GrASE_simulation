@@ -22,16 +22,23 @@ SRC=bipartition.merged.TSSTTS.stranded.test.EBapprox
 OUT=bipartition.merged.TSSTTS.stranded.test.modelcomp
 mkdir -p $OUT
 
-for f in phi.merged.TSSTTS.stranded.txt phi.merged.TSSTTS.stranded.approx.moderated.txt \
-         test_bipartition.merged_betabinom_EBapprox.txt; do
-  [ -e "$OUT/$f" ] || cp "$SRC/$f" "$OUT/$f"
+# Same as the internal half: the EBapprox run tags its phi with the model name,
+# so copy it under the untagged name this script passes to --phi, and bring the
+# annotated EBapprox result along for eval_modelcomp.sh.
+cp -n "$SRC/phi.merged.TSSTTS.stranded.EBapprox.txt" \
+      "$OUT/phi.merged.TSSTTS.stranded.txt"
+cp -n "$SRC/phi.merged.TSSTTS.stranded.EBapprox.approx.moderated.txt" \
+      "$OUT/phi.merged.TSSTTS.stranded.approx.moderated.txt"
+for f in test_bipartition.merged_betabinom_EBapprox.txt \
+         test_bipartition.merged_betabinom_EBapprox.annotated.txt; do
+  cp -n "$SRC/$f" "$OUT/$f"
 done
 
 run () {
   local m=$1; shift
   echo "=== $m  $(date +%H:%M:%S) ==="
   Rscript $S/exontest.R \
-    --file bipartition.merged.exoncnt.combined.txt \
+    --file bipartition.merged.stranded.TSSTTS.exoncnt.combined.txt \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
     --cond1 group1 --cond2 group2 "$@" \

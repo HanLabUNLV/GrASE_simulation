@@ -7,9 +7,18 @@
 # transcripts directly, but every call implicates a transcript set:
 #   GrASE : transcripts of the tested distinct path group (transcripts1/2)
 #   DEXSeq: transcripts containing the significant bin (GT 'transcripts' col)
-#   MAJIQ : transcripts using ANY junction of the significant LSV (whole LSV)
-#   rMATS : whole-event calls cannot disambiguate a transcript; localization
-#           precision only, via the junction GT's n_manip_inc/skip columns.
+#   MAJIQ : transcripts using ANY junction of the significant LSV (whole LSV,
+#           whether or not that junction was itself significant)
+#   rMATS : transcripts using ANY junction of the significant event, i.e. the
+#           inclusion side UNION the skipping side (SE, A3SS, A5SS, RI). For RI
+#           it also adds transcripts with an exon spanning the intron.
+# The MAJIQ and rMATS rules are deliberately symmetric: both implicate the whole
+# local event, so neither is credited for resolving a single path. (An earlier
+# version of this header said rMATS could not be localized; the code never did
+# that, and Table 4 reports rMATS with inc+skip implicated sets.)
+#
+# The truth is the same for every tool. Only the implicated set differs, and its
+# size (sharp_*) is what separates strict from tolerant precision.
 #
 # Metrics, reported PER CATEGORY (DTE, DTU, Background, DGE, ALL):
 #  1. Transcript recall (SHARED by both precisions): a manipulated transcript is
@@ -26,9 +35,24 @@
 # precisions and in the pooled ALL row (FULL-universe / null-FP convention);
 # categories partition: DTE + DTU + Background + DGE = ALL.
 #
-# Significance rules as elsewhere: GrASE padj < 0.01 & lfc_diff_net > 0;
-# DEXSeq padj < 0.01; MAJIQ per-junction P(|dPSI|>=0.20) >= 0.95;
-# rMATS FDR < 0.01 + count/PSI filter.
+# Call rules, as implemented below (padj 0.01 throughout):
+#   GrASE : BOTH nested-BH stages < 0.01 (two_stage) AND lfc_diff_net > 0. The
+#           _dpi0.1 / _dpi0.2 variants add |delta_pi| >= 0.1 / 0.2.
+#   DEXSeq: exon-level padj < 0.01.
+#   MAJIQ : an LSV is called iff its MAX junction has P(changing) >= 0.95 at the
+#           stated C (0.20 default, 0.10 permissive). The LSV, not the junction,
+#           is the unit, so one significant junction implicates the whole LSV.
+#   rMATS : FDR < 0.01, with the documented PSI/count gate ON by default (>= 10
+#           reads in both groups, PSI within 0.05-0.95 in both) and OFF as a
+#           variant. The gate is a raw-PSI boundary guard, not an effect-size
+#           threshold; the _dpsi0.1 / _dpsi0.2 variants add |IncLevelDifference|,
+#           which is the real analogue of GrASE_dpi and MAJIQ_C.
+# Null-gene (Background/DGE) calls are kept for every tool and charged as FP.
+#
+# NOT the unit-level GT_rule. That labels each tool's own tests (GrASE
+# bipartitions, MAJIQ junctions, rMATS events) and lives in infer_*_gt.R. This
+# script scores in transcript currency against the simulation design directly,
+# so it needs no GT_rule and DEXSeq (which has none) is scored on equal terms.
 
 suppressPackageStartupMessages({ library(dplyr); library(rtracklayer) })
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
@@ -237,6 +261,10 @@ grase_tab <- bind_rows(grase_tab,
 ## terminal path with no unique junction; that holds for part of them, but a
 ## large share are alternative donors/acceptors riding inside a terminal bubble
 ## and DO own an exclusive junction (scan: scripts/tsstts_empty_scan.py).
+## UNSTRANDED merged unit, kept only as a comparator. The reported tables read
+## GrASE_merged_stranded (built from `mstr` below, the stranded merged dirs), so
+## do NOT repoint these at the stranded lane -- that would make
+## GrASE_merged_all identical to GrASE_merged_stranded and destroy the contrast.
 merged_src <- c(
   internal = "bipartition.merged.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
   TSSTTS   = "bipartition.merged.TSSTTS.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
@@ -291,6 +319,53 @@ if (all(file.exists(file.path(BASE, mstr)))) {
   ## tool, since MAJIQ cannot test a TSS/TTS boundary at all.
   grase_tab <- bind_rows(grase_tab,
     score_tool(ms[ms$src == "internal", KEEP], "GrASE_merged_stranded_internal"))
+
+  ## TSS/TTS-only counterpart. Carried so the bubble-class attribution below is
+  ## checkable from this file alone: recovered(internal) + recovered(TSSTTS) -
+  ## recovered(both) must equal recovered(GrASE_merged_stranded).
+  grase_tab <- bind_rows(grase_tab,
+    score_tool(ms[ms$src == "TSSTTS", KEEP], "GrASE_merged_stranded_TSSTTS"))
+
+  ## --- bubble-class attribution (manuscript Table 6) ------------------------
+  ## Which class of bubble recovers each manipulated transcript. GrASE processes
+  ## internal and TSS/TTS bubbles identically -- they differ only in whether the
+  ## source is a transcript start (R) or the sink a transcript end (L) -- so this
+  ## measures what that structural difference buys: the transcripts reachable
+  ## ONLY through a TSS/TTS bubble are the ones a junction-based tool cannot
+  ## enumerate at all.
+  ##
+  ## Recovery is the SAME predicate score_tool uses for tx_recall (a significant
+  ## call on the transcript's own gene implicates it), so the Total column
+  ## reconciles with the GrASE_merged_stranded transcript recall by construction.
+  recovered_by <- function(calls) {
+    sigc <- calls[calls$sim_type %in% c("DTE", "DTU"), ]
+    imp_by_gene <- split(sigc$imp, sigc$gene)
+    mapply(function(tx, g) {
+      v <- imp_by_gene[[g]]
+      if (is.null(v)) FALSE else any(vapply(v, function(u) tx %in% u, logical(1)))
+    }, manip_det$tx, manip_det$gene)
+  }
+  att <- data.frame(tx = manip_det$tx, sim_type = manip_det$sim_type,
+                    by_int = recovered_by(ms[ms$src == "internal", ]),
+                    by_tss = recovered_by(ms[ms$src == "TSSTTS", ]),
+                    stringsAsFactors = FALSE)
+  att$class <- ifelse( att$by_int &  att$by_tss, "both",
+               ifelse( att$by_int & !att$by_tss, "internal only",
+               ifelse(!att$by_int &  att$by_tss, "TSS/TTS only", "not recovered")))
+  ORD <- c("internal only", "TSS/TTS only", "both")
+  rec_att <- att[att$class != "not recovered", ]
+  cnt <- function(d) c(ALL = nrow(d), DTE = sum(d$sim_type == "DTE"),
+                       DTU = sum(d$sim_type == "DTU"))
+  at <- t(vapply(ORD, function(k) cnt(rec_att[rec_att$class == k, ]), numeric(3)))
+  at <- rbind(at, Total = colSums(at))
+  att_tab <- data.frame(class = rownames(at), ALL = at[, "ALL"],
+                        DTE = at[, "DTE"], DTU = at[, "DTU"],
+                        row.names = NULL, stringsAsFactors = FALSE)
+  write.table(att_tab, file.path(OUT_DIR, "tsstts_attribution.txt"),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+  cat(sprintf("bubble-class attribution: internal only %d, TSS/TTS only %d, both %d, total %d\n",
+      at["internal only", "ALL"], at["TSS/TTS only", "ALL"],
+      at["both", "ALL"], at["Total", "ALL"]))
 
   ## Same merged unit and the same raw p-values, but PLAIN BH instead of
   ## exontest.R's nested_BH gene screen -- matching DEXSeq's FDR architecture.
