@@ -10,7 +10,7 @@
 # the multiple-testing procedure. At padj 0.01 they are nearly identical (132 vs
 # 127 null calls); they diverge only as the threshold loosens.
 #
-# Curves start at padj 0.01 (MAJIQ prob 0.99) and loosen. PARTIAL ROC: the grid
+# Curves start at padj 0.001 (MAJIQ prob 0.99) and loosen. PARTIAL ROC: the grid
 # stops at 0.2 and structural non-coverage caps TPR well below 1, so AUC is not
 # computable and the axes are zoomed to the operating quadrant.
 #
@@ -38,12 +38,30 @@ TOOLS <- c("GrASE_BH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi
 get <- function(lv){ d <- tab[tab$level==lv & tab$universe=="full" & tab$category=="ALL", ]
   ## MAJIQ keeps its full grid including 0.99 (a posterior probability, not an
   ## FDR -- 0.95 vs 0.99 is a routine choice, unlike padj 1e-3/1e-4).
-  d <- d[!grepl("^MAJIQ",d$tool) & d$thr>=0.01 | grepl("^MAJIQ",d$tool), ]
+  d <- d[!grepl("^MAJIQ",d$tool) & d$thr>=0.001 | grepl("^MAJIQ",d$tool), ]
   d$TPR <- d$TP/d$n_pos; d$FPR <- d$FP/d$n_neg; d[d$tool %in% TOOLS, ] }
 
-png(file.path(B,"plots/roc_partial.GT_rule.png"), width=1520, height=780, res=140)
+## Vector PDF is the figure of record; the PNG is a 300 dpi convenience copy.
+## Dimensions in INCHES, so the panel size is explicit rather than an artifact
+## of pixel count divided by res.
+## Both transcript FP rules are emitted. They share TP and n_pos, so TPR is
+## IDENTICAL between them and only FPR moves -- by about an order of magnitude.
+## strict   charges every co-travelling transcript, so its FPR is dominated by
+##          implicated-set SIZE (call resolution).
+## tolerant charges only transcripts implicated exclusively by calls that hit
+##          nothing, so its FPR reflects decision ACCURACY.
+## Use tolerant to compare tools on decision quality; strict is the resolution
+## penalty shown alongside. The gene panel is identical in both files (gene
+## level has no strict/tolerant split).
+W <- 10.9; H <- 5.6
+for (TXLV in c("transcript_tolerant","transcript_strict")) {
+TAG <- sub("^transcript_","",TXLV)
+for (dev_i in 1:2) {
+if (dev_i == 1) pdf(file.path(B,sprintf("plots/roc_partial.GT_rule.%s.pdf",TAG)), width=W, height=H)
+else png(file.path(B,sprintf("plots/roc_partial.GT_rule.%s.png",TAG)), width=W, height=H,
+         units="in", res=300)
 par(mfrow=c(1,2), mar=c(4.6,4.8,3.2,1), oma=c(2.0,0,1.6,0))
-for (cfg in list(c("transcript_strict","transcript space"), c("gene","gene space"))) {
+for (cfg in list(c(TXLV, sprintf("transcript space (%s FP rule)",TAG)), c("gene","gene space"))) {
   d <- get(cfg[1]); tl <- intersect(TOOLS, d$tool)
   plot(NA, xlim=c(0,max(d$FPR)*1.06), ylim=c(0,max(d$TPR)*1.08), xaxs="i", yaxs="i",
        xlab="FPR", ylab="TPR", main=cfg[2])
@@ -52,13 +70,16 @@ for (cfg in list(c("transcript_strict","transcript space"), c("gene","gene space
     lines(z$FPR,z$TPR,col=COL[t],lwd=2.2); points(z$FPR,z$TPR,col=COL[t],pch=16,cex=0.85) }
   legend("bottomright", legend=plab(tl), col=COL[tl], lwd=2, bty="n", cex=0.66)
 }
-mtext("Partial ROC: TPR vs FPR, curves start at padj 0.01 (MAJIQ prob 0.99) and loosen. UP-AND-LEFT is better.",
+mtext("Partial ROC: TPR vs FPR, curves start at padj 0.001 (MAJIQ prob 0.99) and loosen. UP-AND-LEFT is better.",
       outer=TRUE, cex=0.85, font=2)
 mtext("GrASE curves use the merged exon+SJ unit with nested_BH (exontest.R default); GrASE (plain BH) is plain BH on the same raw p-values, matching DEXSeq's FDR architecture",
       side=1, outer=TRUE, cex=0.62, line=0.3, font=3)
 invisible(dev.off())
-cat("wrote plots/roc_partial.GT_rule.png\n\n")
-for (lv in c("transcript_strict","gene")) {
+}
+cat(sprintf("wrote plots/roc_partial.GT_rule.%s.{pdf,png}\n", TAG))
+}
+cat("\n")
+for (lv in c("transcript_tolerant","transcript_strict","gene")) {
   d <- get(lv)
   cat(sprintf("=== %s ===\n", lv))
   for (t in intersect(TOOLS, d$tool)) { z <- d[d$tool==t,]; z <- z[order(z$FPR),]

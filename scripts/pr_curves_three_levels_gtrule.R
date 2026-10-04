@@ -833,11 +833,11 @@ for (uni in c("restricted","full")) {
     d <- tab[tab$level == lv & tab$universe == uni & tab$category == categ, ]
     d <- d[d$tool %in% PLOT_TOOLS, ]                     # user-selected tools only
     ## Curves start at the standard operating point and loosen from there.
-    ## padj < 0.01 is where these tools are reported; 1e-3 and 1e-4 are not
-    ## operating points anyone uses, and plotting them is misleading -- on the
-    ## null-space FPR view DEXSeq looked dominant purely on a padj 1e-4 point
-    ## (22 null FP) while being 2-8x worse than GrASE at every usable threshold.
-    ## The rows stay in the written table; only the curves are trimmed.
+    ## Curves start at padj 0.001. The padj 1e-4 point is trimmed (it is not an
+    ## operating point anyone reports, and on the null-space FPR view DEXSeq
+    ## looked dominant purely on that point); 1e-3 is kept so the stringent end of
+    ## the DEXSeq and rMATS curves is visible. The rows for every threshold stay
+    ## in the written table; only the curves are trimmed.
     ## MAJIQ's statistic runs the other way (probability floor, larger =
     ## stricter), so its standard point is 0.95 and it loosens downward.
     ## MAJIQ keeps 0.99: its statistic is a posterior probability, not an FDR,
@@ -845,7 +845,7 @@ for (uni in c("restricted","full")) {
     ## unlike padj 1e-3/1e-4, which nobody reports. The extra point also lets
     ## MAJIQ_C0.20 reach FP 24 in gene space, which finally overlaps
     ## GrASE_dpi0.1's range (21-22) and makes a matched comparison possible.
-    d <- d[!grepl("^MAJIQ", d$tool) & d$thr >= 0.01 | grepl("^MAJIQ", d$tool), ]
+    d <- d[!grepl("^MAJIQ", d$tool) & d$thr >= 0.001 | grepl("^MAJIQ", d$tool), ]
     ## UNIT is a WITHIN-TOOL panel: only GrASE-family variants share the
     ## bipartition unit and GT_rule_bipartition, so only they may be overlaid.
     ## Other tools' units (bins / LSVs / junctions / events) are scored against
