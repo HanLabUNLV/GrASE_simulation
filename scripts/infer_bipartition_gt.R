@@ -50,9 +50,10 @@
 # (manip_path_mass1/2).
 #
 # Binary labels; nothing excluded. NO detectability floor: magnitude is a
-# stratification covariate only. Zero-mass tests are labelled, not dropped --
-# zero in both conditions is negative; zero in one only means the bubble
-# appears/disappears, positive iff D was manipulated.
+# stratification covariate only. Zero-mass tests are labelled, not dropped.
+# A condition with no mass on D + S is given pi_c = 0, so: empty in both
+# conditions -> true_dpi = 0, negative; empty in one -> the bubble appears or
+# disappears, true_dpi = pi_other, positive iff D was manipulated.
 #
 # Computed entirely from design parameters: tpms from simulate.rda (NOT
 # sim.counts.mat, which is length-weighted and gives the wrong scale), bin length
@@ -260,8 +261,13 @@ res <- mclapply(genes, function(g) {
     }
 
     z1 <- (yD1 + yS1) <= 0; z2 <- (yD2 + yS2) <= 0
-    pi1 <- if (z1) NA_real_ else yD1/(yD1+yS1)
-    pi2 <- if (z2) NA_real_ else yD2/(yD2+yS2)
+    ## A condition with no mass on D + S has no proportion; define pi_c = 0 there.
+    ## This one convention covers both boundary cases: empty in both conditions
+    ## gives true_dpi = 0 (negative); empty in one gives true_dpi = pi_other, which
+    ## is > 0 exactly when D carries mass in the other condition, and otherwise
+    ## manip_mass_changed is already FALSE because manipulated mass <= total mass.
+    pi1 <- if (z1) 0 else yD1/(yD1+yS1)
+    pi2 <- if (z2) 0 else yD2/(yD2+yS2)
     TS  <- unique(unlist(ann$tx[Sp]))
     Ml  <- intersect(M, union(TD, TS))
     inD <- intersect(Ml, TD); inS <- intersect(Ml, TS)
@@ -293,9 +299,12 @@ cat(sprintf("\nscored %d tests\n", nrow(r)))
 
 ## --- the rule, verbatim from infer_bipartition_gt.R -------------------------
 EPS <- 1e-10
-both_zero <- r$mass_zero_c1 & r$mass_zero_c2
-one_zero  <- xor(r$mass_zero_c1, r$mass_zero_c2)
-r$true_dpi_eff <- ifelse(one_zero, 1, ifelse(both_zero, 0, r$true_dpi))
+## true_dpi is already complete (pi_c = 0 for an empty condition, set above).
+## true_dpi_eff is kept as an alias because metric_level_comparison_gtrule.R
+## bins on it. It used to force 1 for a bubble empty in one condition, which put
+## every appearing bubble in the top stratum; it is now the actual |pi_2 - pi_1|.
+## The binary label is unchanged either way.
+r$true_dpi_eff <- r$true_dpi
 r$gt_positive  <- r$manip_mass_changed & !is.na(r$true_dpi_eff) & r$true_dpi_eff > EPS
 r$GT_rule_bipartition <- r$gt_positive
 
