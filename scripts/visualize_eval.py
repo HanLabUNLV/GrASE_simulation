@@ -244,10 +244,13 @@ def best_method(summary, padj=0.01):
 # ---------------------------------------------------------------------------
 
 def _save(fig, out_dir, name):
+    """Write a vector PDF (the figure of record, scaled for print) and a
+    300 dpi PNG alongside it. 150 dpi was too coarse to enlarge."""
     path = out_dir / f"{name}.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_dir / f"{name}.pdf", bbox_inches="tight")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"  saved: {path}")
+    print(f"  saved: {path} (+ .pdf)")
 
 
 def _legend_handles(methods, palette, labels):
@@ -564,20 +567,34 @@ def fig_per_gene_boxplot(per_gene, methods, palette, labels, out_dir,
 
 
 def fig_confusion_counts(summary, methods, palette, labels, out_dir,
-                         title_prefix, padj=0.01, suffix=""):
+                         title_prefix, padj=0.01, suffix="", orient="v"):
+    """orient="v" stacks the sim_type panels vertically (one column);
+    orient="h" places them side by side in a single row. The per-panel width
+    is identical either way, so bar width and bar spacing are unchanged --
+    only the arrangement of the panels differs."""
     sim_types = [s for s in SIM_TYPES_ORDERED
                  if s in summary["sim_type"].unique()]
     sub   = summary[summary["padj_thr"] == padj]
-    nrows = len(sim_types)
-    fig, axes = plt.subplots(nrows, 1,
-                             figsize=(max(8, len(methods) * 0.9), 3 * nrows))
-    if nrows == 1:
+    npan  = len(sim_types)
+    # Narrower than the other panels: this figure is a stacked bar per method,
+    # so its width only needs to fit the method labels, not a curve.
+    # Bar SPACING is governed by the figure width, not by the x positions:
+    # the axis autoscales to the data range, so scaling x alone changes nothing
+    # on the page. Halving the per-method width and the floor halves the
+    # physical distance between bar centres.
+    panel_w = max(2.5, len(methods) * 0.22)
+    if orient == "h":
+        fig, axes = plt.subplots(1, npan, figsize=(panel_w * npan, 3.4))
+    else:
+        fig, axes = plt.subplots(npan, 1, figsize=(panel_w, 3 * npan))
+    if npan == 1:
         axes = [axes]
+    axes = np.atleast_1d(axes).ravel()
 
     x     = np.arange(len(methods))
-    width = 0.6
+    width = 0.4      # 2x the previous 0.2; bar SPACING is unchanged (set by figsize)
 
-    for ax, stype in zip(axes, sim_types):
+    for pi, (ax, stype) in enumerate(zip(axes, sim_types)):
         row = sub[sub["sim_type"] == stype]
         tp = [row.loc[row["method"] == m, "total_TP"].values for m in methods]
         fp = [row.loc[row["method"] == m, "total_FP"].values for m in methods]
@@ -593,9 +610,11 @@ def fig_confusion_counts(summary, methods, palette, labels, out_dir,
         ax.set_xticks(x)
         ax.set_xticklabels([labels.get(m, m) for m in methods],
                            rotation=35, ha="right", fontsize=8)
-        ax.set_ylabel("Count")
+        # Side by side, the y label and legend only belong on the first panel.
+        ax.set_ylabel("Count" if (orient != "h" or pi == 0) else "")
         ax.set_title(stype, fontsize=11)
-        ax.legend(loc="upper right", fontsize=8)
+        if orient != "h" or pi == 0:
+            ax.legend(loc="upper right", fontsize=8)
         ax.grid(axis="y", alpha=0.3)
 
     rest_tag = " (restricted)" if suffix else ""
@@ -728,7 +747,8 @@ def run_cross(results_dir, summary_bip, summary_nc2, out_base, padj=0.01,
             fig_per_gene_boxplot(per_gene, methods, cross_palette, cross_labels,
                                  out_dir, "Cross comparison", padj=padj, suffix=suffix)
         fig_confusion_counts(summary, methods, cross_palette, cross_labels,
-                             out_dir, "Cross comparison", padj=padj, suffix=suffix)
+                             out_dir, "Cross comparison", padj=padj, suffix=suffix,
+                             orient="h")
 
 # ---------------------------------------------------------------------------
 # Main

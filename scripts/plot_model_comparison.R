@@ -7,14 +7,25 @@ library(gridExtra)
 OUTDIR <- "/mnt/data1/home/mirahan/GrASE_simulation/scripts/plots/model_comparison"
 dir.create(OUTDIR, recursive = TRUE, showWarnings = FALSE)
 
-# Define paths
-f_EBmap <- "~/GrASE_simulation/bipartition.test/test_bipartition.internal_betabinom_EBmap.txt"
-f_EBapprox <- "~/GrASE_simulation/bipartition.test/test_bipartition.internal_betabinom_EBapprox.txt"
-f_MLE  <- "~/GrASE_simulation/bipartition.test/test_bipartition.internal_betabinom_MLE.txt"
-f_wilcoxon <- "~/GrASE_simulation/bipartition.test/test_bipartition.internal_wilcoxon.txt"
+# Define paths.
+#
+# STRANDED MERGED internal arm -- the lane every other figure and table uses.
+# This previously read bipartition.test/, the UNSTRANDED PRE-MERGE arm, so the
+# p-values here were not comparable with the rest of the manuscript.
+# Regenerate the inputs with: bash scripts/run_modelcomp_stranded.sh
+#
+# All four models share ONE phi, estimated from these counts during the
+# stranded run (phi.merged.stranded.txt, 28,417 events, median 458.9). A
+# per-model phi would confound the model comparison with the dispersion
+# estimate. MLE and wilcoxon do not use phi at all.
+MC <- "~/GrASE_simulation/bipartition.merged.stranded.test.modelcomp"
+f_EBmap    <- file.path(MC, "test_bipartition.merged_betabinom_EBmap.txt")
+f_EBapprox <- file.path(MC, "test_bipartition.merged_betabinom_EBapprox.txt")
+f_MLE      <- file.path(MC, "test_bipartition.merged_betabinom_MLE.txt")
+f_wilcoxon <- file.path(MC, "test_bipartition.merged_wilcoxon.txt")
 # Raw per-event phi table carries the LRT identifiability flag (BB significantly
 # overdispersed vs binomial). Used to color the dispersion scatter.
-f_phi <- "~/GrASE_simulation/bipartition.test/phi.glmmtmb.internal.txt"
+f_phi <- file.path(MC, "phi.merged.stranded.txt")
 
 cat("Reading data...\n")
 t_EBapprox <- read.table(f_EBapprox, header=TRUE, stringsAsFactors=FALSE)
@@ -53,9 +64,17 @@ df_wilcoxon <- t_wilcoxon %>%
 all_data <- bind_rows(df_EBapprox, df_EBmap, df_MLE, df_wilcoxon)
 all_data[is.na(all_data$effect_size),'effect_size'] <- 0
 
-# Clean and transform
-# We limit phi to visualization range since MLE goes to 10^69
-MAX_PHI_PLOT <- 20000 
+# Clean and transform.
+#
+# PHI_PLOT_MAX is an AXIS LIMIT, not a clamp: a phi above it is set to NA and
+# the point is OMITTED. It used to be clamped TO the limit, which stacked every
+# large value on one pixel column at the axis edge -- 14.1% of EBmap points,
+# spanning phi 2e4 to 1.3e7, piled onto x = log10(20000). That fake ridge was
+# then readable as a diagonal "limit" in the lower right of internalp1, when in
+# truth the EBmap/EBapprox ratio reaches 8e4 with nothing bounding it.
+# A phi that is NA (wilcoxon has none) is likewise omitted rather than drawn at
+# the edge. Counts omitted per method are reported below so the loss is visible.
+PHI_PLOT_MAX <- 20000
 
 all_data <- all_data %>%
   mutate(
@@ -65,12 +84,26 @@ all_data <- all_data %>%
     log_p = -log10(p_clamped),
     
     phi = suppressWarnings(as.numeric(phi)),
-    # Clamp phi for plotting visualization
-    phi_plot = ifelse(is.na(phi) | phi > MAX_PHI_PLOT, MAX_PHI_PLOT, phi),
+    # Out of range -> NA -> omitted by ggplot. NOT clamped to the boundary.
+    phi_plot = ifelse(is.na(phi) | phi > PHI_PLOT_MAX, NA_real_, phi),
     log_phi = log10(phi_plot + 0.1),
 
     effect_size = suppressWarnings(as.numeric(effect_size))
   )
+
+# Report the omissions so they are never silent.
+om <- all_data %>%
+  group_by(method) %>%
+  summarise(n = n(),
+            omitted_na  = sum(is.na(phi)),
+            omitted_big = sum(!is.na(phi) & phi > PHI_PLOT_MAX),
+            max_phi     = suppressWarnings(max(phi, na.rm = TRUE)),
+            .groups = "drop")
+cat(sprintf("phi axis limit %g -- points OMITTED (not clamped):\n", PHI_PLOT_MAX))
+for (i in seq_len(nrow(om)))
+  cat(sprintf("  %-10s %6d tests: %5d no phi, %5d above limit (%.1f%%), max phi %.3g\n",
+      om$method[i], om$n[i], om$omitted_na[i], om$omitted_big[i],
+      100 * om$omitted_big[i] / om$n[i], om$max_phi[i]))
 
 # Widen for direct comparison
 wide_df <- all_data %>%
