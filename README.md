@@ -96,9 +96,7 @@ parallel -j 12 bash STAR/08_pass2.sh group2 {} :::: group.list
 
 ## 3. GrASE analysis pipeline
 
-Drivers in `scripts/` are numbered in execution order. Numbering is in tens so
-a stage can be inserted later without renumbering the rest. Each driver is an
-entry point -- they are not called by one another, so a stage can be rerun on
+Drivers in `scripts/` are numbered in execution order. Each driver can be rerun on
 its own provided its inputs exist.
 
 | stage | driver | what it does |
@@ -122,51 +120,4 @@ its own provided its inputs exist.
 | 85 | `85_tables_manuscript.sh` | native-unit, structural-reach, transcript-level, gene-level and TSS/TTS attribution tables |
 | 86 | `86_plots_dte_dtu.sh` | precision-recall and partial ROC with DTE and DTU as rows, one file per universe |
 
-Describe what a script produces rather than citing a figure or table number.
-Both the numbering and the paragraph order change with every revision, so a
-reference like "the Figure 4 numbers" goes stale silently.
 
-PR and ROC curves start at **padj 0.001** (1e-4 trimmed; MAJIQ keeps its
-probability grid). That is set in `pr_curves_three_levels_gtrule.R`,
-`plot_roc_partial.R`, `pr_dte_dtu_by_universe.R` and `roc_dte_dtu_by_universe.R`,
-and all four must agree or the panels stop being comparable.
-
-**The comparison-structure panels are deliberately scored under gtI, not
-GT_rule**, because GT_rule could not be defined for the multinomial comparison.
-`visualize_eval.py` carries a blanket "SUPERSEDED" header that is correct for
-everything else it produces but does not apply to those panels. Do not
-regenerate them under GT_rule.
-
-### Demoted one-offs (untracked, no numeric prefix)
-
-These produce nothing that appears in the manuscript, so they were taken out of
-the numbered sequence. They remain on disk; the gaps at 23, 40, 52, 53, 63, 71,
-72 and 82 are theirs.
-
-| script | why it is not a stage |
-|--------|----------------------|
-| `tests_nc2_nofloor.sh`, `eval_nc2_nofloor.sh` | the no-floor arm; "nofloor" appears nowhere in the manuscript |
-| `cross_nofloor.sh`, `cross_nofloor_experiment.sh` | same, cross-tool |
-| `gt_junctions_unstranded.sh` | unstranded junction GT; `41_` is independent of it and all reported results are stranded |
-| `eval_modelcomp.sh` | scores under gtIII on `results/sim_exon_info`; the reported model comparison comes from `62_` |
-| `plots_posthoc_lfc_gtIII.sh` | likewise gtIII; the reported filter sweep comes from `81_` |
-| `modelcomp_rerun_meanrule.sh` | one-off wrapper that stages `60_`/`61_` into clean output dirs |
-
-The last two are the trap worth remembering: they score the same models as `62_`
-and `81_` but against a different unit and ground truth, so their numbers look
-plausible and are not interchangeable.
-
-Stages 01-02 (download, STAR alignment) are documented above; `STAR/` keeps its
-own `00_`-`08_` numbering.
-
-### Conventions
-
-- **Outputs are never committed.** `.gitignore` excludes logs, run markers,
-  `*.bak*`, archives, alignments, binary outputs and the output directories.
-  Note three of those directories are *symlinks*; git treats a symlink as a
-  file, so the directory-only patterns need non-slash variants beside them.
-- **Tool directories** (`STAR/`, `majiq/`, `rMATS/`, `DEXSeq/`, `saturn/`) keep
-  their scripts and drop their run products, via `<dir>/*` plus
-  `!<dir>/*.sh|*.R|*.py`.
-- **Only drivers and the helpers they invoke are tracked.** Investigative and
-  one-off scripts are left untracked on purpose.
