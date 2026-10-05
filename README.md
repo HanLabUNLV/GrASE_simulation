@@ -120,6 +120,7 @@ its own provided its inputs exist.
 | 81 | `81_plots_delta_sweep.sh` | null-gene false positives and DTE/DTU precision as the `lfc_diff_net` threshold is swept |
 | 84 | `84_plots_roc_fp.sh` | partial ROC in transcript and gene space, and the FP-location panel |
 | 85 | `85_tables_manuscript.sh` | native-unit, structural-reach, transcript-level, gene-level and TSS/TTS attribution tables |
+| 86 | `86_plots_dte_dtu.sh` | precision-recall and partial ROC with DTE and DTU as rows, one file per universe |
 
 Describe what a script produces rather than citing a figure or table number.
 Both the numbering and the paragraph order change with every revision, so a
