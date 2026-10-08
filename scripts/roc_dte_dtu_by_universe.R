@@ -55,7 +55,7 @@ for (uni in c("full","restricted")) {
     v <- du$TPR[du$level == lv]; if (!length(v)) 1 else min(1, max(v) * 1.08) })
 
   W <- 4.0 * length(LEVELS); H <- 8.2
-  for (dev_i in 1:2) {
+for (dev_i in 1:1) {
     f <- file.path(B, sprintf("plots/roc_dte_dtu.%s.%s", uni,
                               if (dev_i == 1) "pdf" else "png"))
     if (dev_i == 1) pdf(f, width = W, height = H)

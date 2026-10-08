@@ -157,7 +157,7 @@ for (uni in c("full", "restricted")) {
   ## enlarge. Dimensions are in INCHES here, not pixels.
   ## H includes the oma strip reserved below for the overall title.
   W <- 3.4 * (length(cats) + 1); H <- 4.2
-  for (dev_i in 1:2) {
+for (dev_i in 1:1) {
     if (dev_i == 1)
       pdf(file.path(BASE, sprintf("plots/pr_models.GT_rule.%s.pdf", uni)),
           width = W, height = H)

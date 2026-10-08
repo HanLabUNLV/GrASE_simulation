@@ -205,7 +205,7 @@ for (uni in c("full", "restricted")) {
   ## title. Without oma, mtext(outer=TRUE) has no strip to draw in and a
   ## negative `line` pushes the title down onto the panel headings.
   W <- 3.6 * 3; H <- 4.3
-  for (dev_i in 1:2) {
+for (dev_i in 1:1) {
     if (dev_i == 1)
       pdf(file.path(BASE, sprintf("plots/delta_sweep.GT_rule.%s.pdf", uni)),
           width = W, height = H)

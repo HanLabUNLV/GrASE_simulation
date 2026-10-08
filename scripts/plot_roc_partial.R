@@ -56,7 +56,7 @@ get <- function(lv){ d <- tab[tab$level==lv & tab$universe=="full" & tab$categor
 W <- 10.9; H <- 5.6
 for (TXLV in c("transcript_tolerant","transcript_strict")) {
 TAG <- sub("^transcript_","",TXLV)
-for (dev_i in 1:2) {
+for (dev_i in 1:1) {
 if (dev_i == 1) pdf(file.path(B,sprintf("plots/roc_partial.GT_rule.%s.pdf",TAG)), width=W, height=H)
 else png(file.path(B,sprintf("plots/roc_partial.GT_rule.%s.png",TAG)), width=W, height=H,
          units="in", res=300)

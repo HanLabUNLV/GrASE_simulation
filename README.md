@@ -1,6 +1,20 @@
 # GrASE Simulation RNA-Seq Analysis Pipeline
 
-This repository contains scripts to download simulated RNA-seq data and run the STAR alignment pipeline.
+This repository contains the drivers that reproduce the GrASE benchmark: download
+the simulated RNA-seq data of Love et al., align it, run GrASE, and produce every
+figure and table reported.
+
+**Deposited inputs and results.** The splicing graphs, bipartitions, per-gene GTFs
+and DEXSeq GFFs for human GENCODE v28 and v34, the simulation ground truth, and the
+significant-bipartition tables are at
+[doi:10.5281/zenodo.23141907](https://doi.org/10.5281/zenodo.23141907). Stages that
+depend only on the annotation can be skipped by downloading them. The GrASE R
+package itself is archived at
+[doi:10.5281/zenodo.23169081](https://doi.org/10.5281/zenodo.23169081).
+
+Note the two Zenodo sources are different things: `data/wget.sh` fetches the
+simulated FASTQ archives of Love et al. (records 1291375, 1291404, 1291443), while
+the record above holds the annotation-derived inputs and our results.
 
 ## Prerequisites
 
@@ -14,7 +28,8 @@ Ensure the following tools are installed and available in your PATH:
 ## 1. Data Download and Preparation
 
 ### Download Data
-Run the `wget.sh` script to download the simulated datasets from Zenodo.
+Run the `wget.sh` script to download the simulated datasets of Love et al. from
+Zenodo. Edit it first: most of the twelve archives are commented out.
 ```bash
 bash data/wget.sh
 ```

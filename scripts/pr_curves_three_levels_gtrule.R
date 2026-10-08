@@ -810,8 +810,9 @@ disp <- function(x) {
 
 for (categ in c("ALL", "DTE", "DTU", "Background", "DGE")) {
 if (!(categ %in% c("Background","DGE"))) {   # PR curves need positives
-fn <- if (categ == "ALL") "plots/pr_three_levels.GT_rule.png" else sprintf("plots/pr_three_levels.GT_rule_%s.png", categ)
-png(file.path(BASE, fn), width = 1900, height = 1000, res = 130)
+fn <- if (categ == "ALL") "plots/pr_three_levels.GT_rule.pdf" else sprintf("plots/pr_three_levels.GT_rule_%s.pdf", categ)
+## 1900x1000 px at res 130 was 14.6 x 7.7 inches, kept exactly.
+pdf(file.path(BASE, fn), width = 14.6, height = 7.7)
 par(mfrow = c(2,4), mar = c(4.2,4.2,3,1), oma = c(3.1,0,1.6,0))
 # COL, LTY, PLOT_TOOLS defined once above (effect size = shade; all solid).
 cap <- function(x) paste0(toupper(substring(x,1,1)), substring(x,2))
@@ -895,9 +896,9 @@ cat(sprintf("  wrote %s\n", fn))
 }
 
 ## --- stacked TP / FN / FP bars at the operating points --------------------
-fn2 <- sprintf("plots/confusion_three_levels.GT_rule%s.png",
+fn2 <- sprintf("plots/confusion_three_levels.GT_rule%s.pdf",
                if (categ == "ALL") "" else paste0("_", categ))
-png(file.path(BASE, fn2), width = 1900, height = 1000, res = 130)
+pdf(file.path(BASE, fn2), width = 14.6, height = 7.7)
 par(mfrow = c(2,4), mar = c(4,8.5,3,2.5), oma = c(3.1,0,1.6,0))
 op <- tab[tab$category == categ &
           ((grepl("^GrASE|^DEXSeq|^rMATS", tab$tool) & tab$thr == 0.01) |

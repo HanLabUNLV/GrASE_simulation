@@ -52,7 +52,7 @@ for (fam in FAMS) {
  CATS <- fam$cats
  for (uni in c("full", "restricted")) {
   W <- 4.0 * length(LEVELS); H <- if (length(CATS) == 2) 8.2 else 5.0
-  for (dev_i in 1:2) {
+for (dev_i in 1:1) {
     f <- file.path(BASE, sprintf("plots/%s.%s.%s", fam$tag, uni,
                                  if (dev_i == 1) "pdf" else "png"))
     if (dev_i == 1) pdf(f, width = W, height = H)
