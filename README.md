@@ -114,6 +114,20 @@ parallel -j 12 bash STAR/08_pass2.sh group2 {} :::: group.list
 Drivers in `scripts/` are numbered in execution order. Each driver can be rerun on
 its own provided its inputs exist.
 
+**What lives here and what lives in the package.** Everything in this repository
+scores tools against the simulation's known ground truth, which only exists here:
+`evaluate_tools_dexseq_vs_gt.R` (DEXSeq on exon-bin GT, rMATS on junction-level
+GT), `rmats_metricfair.R` (event-level FPR and floored recall) and
+`pr_curves_three_levels_gtrule.R` (the PR and ROC curves).
+`bipartition_split_crosstool.R` is specific to this repository too: it breaks
+exon-bin performance down by GrASE bubble type, defining the internal and TSS/TTS
+universes from GrASE's own distinct sets, which DEXSeq has no notion of.
+
+The GrASE package carries a different pair, `compare_rmats_grase.R` and
+`compare_saturn_grase.R`. Those measure tool-against-tool concordance and use no
+ground truth, so they run on any dataset. Use those for real data; use the
+scripts here only where the truth is known.
+
 | stage | driver | what it does |
 |-------|--------|--------------|
 | 10 | `10_counts_nc2_multinomial.sh` | exonic-part counts for the n_choose_2 and multinomial splits |
