@@ -36,7 +36,7 @@
 # categories partition: DTE + DTU + Background + DGE = ALL.
 #
 # Call rules, as implemented below (padj 0.01 throughout):
-#   GrASE : BOTH nested-BH stages < 0.01 (two_stage) AND lfc_diff_net > 0. The
+#   GrASE : nested_bh at 0.01 per test file (two_stage) AND lfc_diff_net > 0. The
 #           _dpi0.1 / _dpi0.2 variants add |delta_pi| >= 0.1 / 0.2.
 #   DEXSeq: exon-level padj < 0.01.
 #   MAJIQ : an LSV is called iff its MAX junction has P(changing) >= 0.95 at the
@@ -173,18 +173,25 @@ score_tool <- function(calls, tool) {
   bind_rows(out)
 }
 
-## TWO-STAGE THRESHOLD (see pr_curves_three_levels_gtrule.R for the full note).
-## exontest.R's nested_BH screens genes at a FIXED alpha = 0.05 and then runs
-## within-gene BH inside survivors, so the shipped padj already encodes a gene
-## screen at 0.05 regardless of the unit threshold applied here. Filtering
-## padj < 0.01 therefore accepts units from genes admitted at a LOOSER screen
-## than the unit cut. Both stages are recoverable from the raw p-values, and the
-## correct rule at level t is padj_gene < t AND padj_within < t, encoded as
-## pmax(). On the internal file this is 972 significant units at 0.01 rather
-## than 1,012.
-two_stage <- function(pv, gene, padj_gene) {
-  within <- ave(pv, gene, FUN = function(x) p.adjust(x, method = "BH"))
-  pmax(within, padj_gene)
+## TWO-STAGE THRESHOLD: exontest.R's nested_bh (Benjamini-Bogomolov), per test
+## file, at level t. Same function as pr_curves_three_levels_gtrule.R, where the
+## rule is described.
+two_stage <- function(pv, gene, padj_gene, src) {
+  out <- rep(NA_real_, length(pv))
+  for (s in unique(src)) {
+    i  <- which(src == s)
+    w  <- ave(pv[i], gene[i], FUN = function(x) p.adjust(x, method = "BH"))
+    gp <- padj_gene[i][!duplicated(gene[i])]
+    gp <- sort(gp[!is.na(gp)])
+    g  <- unique(gp)
+    cnt <- findInterval(g, gp)                  # R(t) just above each padj_gene value
+    x  <- w * length(gp)                        # within-gene BH times m
+    j  <- findInterval(x, g * cnt, left.open = TRUE) + 1
+    above <- ifelse(j <= length(g), g[pmin(j, length(g))], Inf)
+    below <- ifelse(j > 1, x / cnt[pmax(j - 1, 1)], Inf)
+    out[i] <- pmax(padj_gene[i], pmin(above, below))
+  }
+  out
 }
 
 ## SJAWARE=1 applies the same dpi gate as pr_curves_three_levels_gtrule.R: a side
@@ -212,7 +219,7 @@ g <- bind_rows(lapply(grase_src,
       "setdiff1", "setdiff2", "transcripts1", "transcripts2")]))
 g$src <- rep(names(grase_src), times = g_n)
 ## base call condition: BOTH nested_BH stages below 0.01, AND lfc_diff_net > 0
-g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene)
+g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene, g$src)
 g <- g[!is.na(g$padj2) & g$padj2 < 0.01 & !is.na(g$lfc_diff_net) & g$lfc_diff_net > 0, ]
 g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
 g$sim_type <- get_st(g$gene)
@@ -242,7 +249,7 @@ if (all(file.exists(file.path(BASE, str_src)))) {
       c("gene","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
         "setdiff1","setdiff2","transcripts1","transcripts2")]))
   sg$src <- rep(names(str_src), times = sn)
-  sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene)
+  sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene, sg$src)
   sg <- sg[!is.na(sg$padj2) & sg$padj2 < 0.01 &
            !is.na(sg$lfc_diff_net) & sg$lfc_diff_net > 0, ]
   sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
@@ -285,7 +292,7 @@ read_merged <- function(f) {
   if (!file.exists(p)) return(NULL)
   d <- read.table(p, header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
-  d$padj2 <- two_stage(d$p.value, d$gene, d$padj_gene)
+  d$padj2 <- two_stage(d$p.value, d$gene, d$padj_gene, rep(f, nrow(d)))
   d <- d[!is.na(d$padj2) & d$padj2 < 0.01 &
          !is.na(d$lfc_diff_net) & d$lfc_diff_net > 0, ]
   d$imp <- lapply(ifelse(grepl("diff1", d$comparison), d$transcripts1, d$transcripts2), parse_list)

@@ -184,21 +184,16 @@ gr$sd  <- ifelse(grepl("diff1", gr$comparison), as.character(gr$setdiff1), as.ch
 gr$txs <- ifelse(grepl("diff1", gr$comparison), gr$transcripts1, gr$transcripts2)
 gr$uid <- paste(gr$src, gr$gene, gr$event, gr$comparison, sep = "|")
 gr$imp <- lapply(gr$txs, parse_l, sep = ",")
-## TWO-STAGE THRESHOLD. exontest.R's nested_BH runs a gene screen at a FIXED
-## alpha = 0.05 and then within-gene BH inside the surviving genes, so the
-## shipped `padj` is NA for every unit of a screened-out gene. Sweeping `padj`
-## alone therefore relaxes only stage 2 while the gene screen stays pinned at
-## 0.05: the gene set never changes, which both flattens the curve and makes
-## every threshold except 0.05 incoherent (at 0.01 we were accepting units from
-## genes admitted at a LOOSER screen than the unit threshold -- anti-conservative
-## by ~4%; above 0.05 no new genes could ever enter).
-## nested_bh() computes padj_gene as p.adjust(simes_p, "BH") independently of
-## alpha, and stage 2 as within-gene BH independently of which other genes
-## passed -- so both are recoverable for EVERY gene from the raw p-values, and
-## the correct threshold-t rule is padj_gene < t AND padj_within < t. Encoded as
-## pmax(), since max(a,b) < t iff a < t and b < t. Verified: padj_within
-## reproduces the shipped padj on all 2,989 units that have one (max abs diff
-## 1.5e-15), and the two rules agree exactly at t = 0.05.
+## TWO-STAGE THRESHOLD. exontest.R's nested_bh (Benjamini-Bogomolov) screens
+## genes by BH on Simes p-values, then within each selected gene runs BH and
+## multiplies by m / R, where m is the number of genes tested and R the number
+## selected. It does this once per test file (internal, TSSTTS), at the run's
+## --padj_threshold. The shipped padj therefore encodes one threshold. At level
+## t the same rule is: padj_gene < t AND within-gene BH * m / R(t) < t, with
+## R(t) the genes of that file with padj_gene < t. two_stage() returns the
+## smallest t at which a unit is called, so `stat < t` reproduces exontest.R at
+## every t. Verified against the shipped padj of the merged stranded internal
+## file (run at 0.01): max abs diff 3e-15.
 ## lfc_diff_net gate. exontest.R applies `lfc_diff_net > delta` when building its
 ## `significant` column, with --delta defaulting to 0; the sweep must apply the
 ## same call condition or it would credit GrASE with calls the tool would not
@@ -230,11 +225,24 @@ dpi_thr <- function(d, dp) {
   ifelse(is.na(sd) | sd %in% c("NA", ""), MIN_DPI_SJ, dp)
 }
 
-two_stage <- function(pv, gene, padj_gene) {
-  within <- ave(pv, gene, FUN = function(x) p.adjust(x, method = "BH"))
-  pmax(within, padj_gene)
+two_stage <- function(pv, gene, padj_gene, src) {
+  out <- rep(NA_real_, length(pv))
+  for (s in unique(src)) {
+    i  <- which(src == s)
+    w  <- ave(pv[i], gene[i], FUN = function(x) p.adjust(x, method = "BH"))
+    gp <- padj_gene[i][!duplicated(gene[i])]
+    gp <- sort(gp[!is.na(gp)])
+    g  <- unique(gp)
+    cnt <- findInterval(g, gp)                  # R(t) just above each padj_gene value
+    x  <- w * length(gp)                        # within-gene BH times m
+    j  <- findInterval(x, g * cnt, left.open = TRUE) + 1
+    above <- ifelse(j <= length(g), g[pmin(j, length(g))], Inf)
+    below <- ifelse(j > 1, x / cnt[pmax(j - 1, 1)], Inf)
+    out[i] <- pmax(padj_gene[i], pmin(above, below))
+  }
+  out
 }
-gr$padj2 <- two_stage(gr$p.value, gr$gene, gr$padj_gene)
+gr$padj2 <- two_stage(gr$p.value, gr$gene, gr$padj_gene, gr$src)
 lfcok  <- !is.na(gr$lfc_diff_net) & gr$lfc_diff_net > DELTA
 st <- gr$padj2
 st[is.na(st)] <- 1                    # no statistic: a CALL condition, not a gap
@@ -304,7 +312,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   mg$txs <- ifelse(grepl("diff1", mg$comparison), mg$transcripts1, mg$transcripts2)
   mg$uid <- paste(mg$src, mg$gene, mg$event, mg$comparison, sep = "|")
   mg$imp <- lapply(mg$txs, parse_l, sep = ",")
-  mg$padj2 <- two_stage(mg$p.value, mg$gene, mg$padj_gene)
+  mg$padj2 <- two_stage(mg$p.value, mg$gene, mg$padj_gene, mg$src)
   mlfcok <- !is.na(mg$lfc_diff_net) & mg$lfc_diff_net > DELTA
   mst <- mg$padj2; mst[is.na(mst)] <- 1; mst[!mlfcok] <- 1
   calls$GrASE_merged_all <- list(
