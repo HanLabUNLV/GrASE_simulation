@@ -41,11 +41,13 @@ if [ "$LANE" = "stranded" ]; then
   CNT_INT=bipartition.merged.stranded.counts
   CNT_TSS=bipartition.merged.TSSTTS.stranded.counts
   GT=results/gt/bipartition_merged_gt.stranded.txt
+  SFX=.stranded
 else
   unset STRANDED GT_RULE_STRANDED || true
   CNT_INT=bipartition.merged.counts
   CNT_TSS=bipartition.merged.TSSTTS.counts
   GT=results/gt/bipartition_merged_gt.txt
+  SFX=
 fi
 # SJAWARE gates the sweep's dpi floor for junction-sourced sides (0.05 vs the
 # exonic 0.1). Set to match the shipped add_significant() default, which is
@@ -55,18 +57,18 @@ echo "=== lane: $LANE  (STRANDED=${STRANDED:-unset} SJAWARE=${SJAWARE:-unset}) =
 
 while pgrep -f "exec/R.*[e]xontest" > /dev/null; do sleep 60; done
 
-# 1. Provenance depends only on the merged COUNTS, not on p-values, so a re-run
-#    that changed only the tests does not invalidate it. Skipped when present.
-#    NOTE: infer_bipartition_gt.R reads merge_provenance.<type>.txt with no
-#    stranded variant, so the stranded GT is built against the unstranded
-#    sidecar. Pre-existing; changing it would move every stranded GT number.
-echo "=== 1. provenance ==="
+# 1. Count source per event, from the merged COUNTS of this lane. It does not
+#    depend on p-values, so a re-run that changed only the tests does not
+#    invalidate it. Skipped when present; a re-run of the merge must move it
+#    aside, because events are row numbers of the per-gene bipartition files.
+echo "=== 1. count source ==="
 for t in internal TSSTTS; do
   [ "$t" = internal ] && C=$CNT_INT || C=$CNT_TSS
-  if [ -s results/gt/merge_provenance.$t.txt ]; then
-    echo "  merge_provenance.$t.txt present, skipping"
+  CS=results/gt/count_source.$t$SFX.txt
+  if [ -s $CS ]; then
+    echo "  $CS present, skipping"
   else
-    python3 scripts/extract_merge_provenance.py $C $t results/gt/merge_provenance.$t.txt
+    python3 scripts/extract_count_source.py $C $t $CS
   fi
 done
 
@@ -82,9 +84,6 @@ echo "=== 3. PR sweep (cache invalidated so the re-run tests are picked up) ==="
   cp $EV/pr_three_levels.GT_rule.txt $EV/pr_three_levels.GT_rule.txt.prev_$LANE
 Rscript scripts/pr_curves_three_levels_gtrule.R
 
-# transcript metrics FIRST: gene_level_table.py reads n_sig_calls out of
-# transcript_level_metrics.txt, so running it after leaves any newly added tool
-# with n_sig_calls = NA in the gene tables.
 echo "=== 4. transcript-level metrics ==="
 Rscript scripts/transcript_level_metrics.R
 

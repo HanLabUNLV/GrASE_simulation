@@ -14,7 +14,7 @@
 # which is exactly the discrimination a stranded protocol gives. Strand only,
 # never gene -- same-strand overlaps stay ambiguous as they would in reality.
 #
-# Usage: bash scripts/run_stranded_recount.sh [n_parallel]   (default 12)
+# Usage: bash scripts/01_stranded_recount.sh [n_parallel]   (default 12)
 set -eu
 BASE=/mnt/data1/home/mirahan/GrASE_simulation
 cd $BASE

@@ -1,4 +1,4 @@
-"""Per-event provenance for merged bipartition counts.
+"""Per-event count source for merged bipartition counts.
 
 PERMANENT PIPELINE STEP -- not a workaround. Required before
 `infer_bipartition_gt.R --merged`, which will stop and name this script if the
@@ -25,9 +25,9 @@ measured and rejected. The same repetition is why a large merged count set is
 trimmed of intron_distinct* before combining, which means the ids may exist
 only in the per-gene files this script reads.
 
-Usage: python3 scripts/extract_merge_provenance.py <countdir> <src> <out.txt>
-  e.g. python3 scripts/extract_merge_provenance.py bipartition.merged.counts internal \\
-         results/gt/merge_provenance.internal.txt
+Usage: python3 scripts/extract_count_source.py <countdir> <src> <out.txt>
+  e.g. python3 scripts/extract_count_source.py bipartition.merged.stranded.counts internal \\
+         results/gt/count_source.internal.stranded.txt
 Out:  src gene event diff1_source diff2_source intron_distinct1 intron_distinct2
 """
 import sys, glob, os, csv
@@ -38,7 +38,7 @@ COLS = ["diff1_source", "diff2_source", "intron_distinct1", "intron_distinct2"]
 n = 0
 with open(out, "w") as fh:
     fh.write("\t".join(["src", "gene", "event"] + COLS) + "\n")
-    for fp in sorted(glob.glob(os.path.join(countdir, "*.bipartition.exoncnt.txt"))):
+    for fp in sorted(glob.glob(os.path.join(countdir, "*.bipartition.*.cnt.txt"))):
         seen = set()
         with open(fp) as g:
             for r in csv.DictReader(g, delimiter="\t"):

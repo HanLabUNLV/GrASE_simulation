@@ -130,11 +130,14 @@ scripts here only where the truth is known.
 
 | stage | driver | what it does |
 |-------|--------|--------------|
+| 00 | `00_bipartition_v28_dedupfix.sh` | enumerate bipartitions from `graphml.v28` into `bipartition.v28.dedupfix`; also writes each gene's table before the dedup (`<gene>.bipartition.all.txt`) |
+| 01 | `01_stranded_recount.sh` | re-count the DEXSeq bins with each read's strand recovered from its source transcript, into `DEXSeq/count_files_stranded` (helpers: `build_read_strand.py`, `split_bam_by_origin.py`, `split_gff_by_strand.sh`) |
+| 02 | `02_stranded_pipeline.sh` | split into internal and terminal, split-read counts, stranded exonic counts, merge, and the merged exontest with the read floor; each output directory is first moved to `<dir>.olddedup` |
 | 10 | `10_counts_nc2_multinomial.sh` | exonic-part counts for the n_choose_2 and multinomial splits |
-| 20 | `20_tests_bipartition_minreads.sh` | the four bipartition exontest arms, with the pre-testing read floor |
+| 20 | `20_tests_bipartition_minreads.sh` | re-applies the pre-testing read floor to existing fits of the four bipartition arms, reusing their checkpoints; not needed after 02, which fits with the floor |
 | 21 | `21_tests_nc2_multinomial.sh` | exontest for n_choose_2 and multinomial |
 | 22 | `22_tests_multinomial.sh` | multinomial arms only |
-| 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest; also builds the gene-level tables |
+| 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest: per-event count source (`extract_count_source.py` -> `results/gt/count_source.<class>[.stranded].txt`), ground truth, PR sweep, transcript-level metrics and gene-level tables |
 | 41 | `41_gt_junctions_stranded.sh` | junction-level structural ground truth, stranded rMATS runs |
 | 50 | `50_eval_nc2.sh` | evaluate the n_choose_2 results |
 | 51 | `51_eval_multinomial.sh` | evaluate the multinomial results |
