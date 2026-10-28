@@ -177,11 +177,12 @@ if (MERGED) {
   ## ~14x on a 10-contrast run, so carrying them would add 1.47 GB to DICE's
   ## 4.30 GB TSS/TTS file to store 422,081 facts fourteen times. This script is
   ## the only consumer, and it needs them once per event -- which is exactly the
-  ## shape scripts/extract_merge_provenance.py writes.
+  ## shape scripts/extract_count_source.py writes, one file per lane.
   prov <- bind_rows(lapply(names(files), function(s_) {
-    p <- file.path(OUT, sprintf("merge_provenance.%s.txt", s_))
-    if (!file.exists(p)) stop("missing provenance file: ", p,
-                              "\n  run scripts/extract_merge_provenance.py first")
+    p <- file.path(OUT, sprintf("count_source.%s%s.txt", s_,
+                                if (STRANDED) ".stranded" else ""))
+    if (!file.exists(p)) stop("missing count source file: ", p,
+                              "\n  run scripts/extract_count_source.py first")
     read.table(p, header = TRUE, sep = "\t", quote = "", comment.char = "",
                stringsAsFactors = FALSE, colClasses = "character")
   }))
@@ -241,16 +242,21 @@ res <- mclapply(genes, function(g) {
     yS1 <- sum(m1[Sp]); yS2 <- sum(m2[Sp])
 
     if (srcD == "sj") {
-      J <- parse_parts(if (one) r$intron_distinct1 else r$intron_distinct2)
-      J <- J[J %in% names(jtx)]
-      if (!length(J)) return(NULL)
-      txJ <- lapply(J, function(j) jtx[[j]])
-      yD1 <- A_JUNC * sum(vapply(txJ, function(u) gv(tp1, u), numeric(1)))
-      yD2 <- A_JUNC * sum(vapply(txJ, function(u) gv(tp2, u), numeric(1)))
-      mD1 <- A_JUNC * sum(vapply(txJ, function(u) gv(tp1, intersect(u, M)), numeric(1)))
-      mD2 <- A_JUNC * sum(vapply(txJ, function(u) gv(tp2, intersect(u, M)), numeric(1)))
-      TD  <- unique(unlist(txJ))
-      nD  <- length(J)
+      ## "," separates routes and "|" the junctions within one route; the count
+      ## averages within a route and sums across routes (sum_sj_counts), so the
+      ## expected mass does the same. A list with no "|" is one junction per route.
+      routes <- lapply(parse_parts(if (one) r$intron_distinct1 else r$intron_distinct2),
+                       function(g) { j <- trimws(strsplit(g, "|", fixed = TRUE)[[1]])
+                                     j[j %in% names(jtx)] })
+      routes <- routes[lengths(routes) > 0]
+      if (!length(routes)) return(NULL)
+      rmass <- function(tp, keep = NULL) sum(vapply(routes, function(J)
+        mean(vapply(J, function(j) gv(tp, if (is.null(keep)) jtx[[j]] else intersect(jtx[[j]], keep)),
+                    numeric(1))), numeric(1)))
+      yD1 <- A_JUNC * rmass(tp1);    yD2 <- A_JUNC * rmass(tp2)
+      mD1 <- A_JUNC * rmass(tp1, M); mD2 <- A_JUNC * rmass(tp2, M)
+      TD  <- unique(unlist(lapply(unlist(routes), function(j) jtx[[j]])))
+      nD  <- length(routes)
     } else {
       Dp <- intersect(parse_parts(if (one) r$setdiff1 else r$setdiff2), bins)
       if (!length(Dp)) return(NULL)

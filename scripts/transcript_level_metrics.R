@@ -187,6 +187,18 @@ two_stage <- function(pv, gene, padj_gene) {
   pmax(within, padj_gene)
 }
 
+## SJAWARE=1 applies the same dpi gate as pr_curves_three_levels_gtrule.R: a side
+## whose distinct set is empty in the test output (junction-sourced in the merged
+## unit) needs |delta_pi| >= 0.05 whatever the nominal gate, so the _dpi rows here
+## are the same calls as the PR sweep and gene tables. Unset gives a uniform gate.
+SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
+MIN_DPI_SJ <- 0.05
+dpi_thr <- function(d, dp) {
+  if (!SJAWARE) return(rep(dp, nrow(d)))
+  sd <- ifelse(grepl("diff1", d$comparison), d$setdiff1, d$setdiff2)
+  ifelse(is.na(sd) | sd %in% c("NA", ""), MIN_DPI_SJ, dp)
+}
+
 ## --- GrASE ------------------------------------------------------------------
 cat("GrASE...\n")
 grase_src <- c(internal = "bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
@@ -197,7 +209,7 @@ g <- bind_rows(lapply(grase_src,
   function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
                          comment.char = "", stringsAsFactors = FALSE)[,
     c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
-      "transcripts1", "transcripts2")]))
+      "setdiff1", "setdiff2", "transcripts1", "transcripts2")]))
 g$src <- rep(names(grase_src), times = g_n)
 ## base call condition: BOTH nested_BH stages below 0.01, AND lfc_diff_net > 0
 g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene)
@@ -210,7 +222,7 @@ grase_tab <- score_tool(g[, c("gene", "sim_type", "imp")], "GrASE")
 ## the table compares MAJIQ WITH an effect-size threshold against GrASE WITHOUT
 ## one, which is not a like-for-like operating point.
 for (dp in c(0.1, 0.2)) {
-  gk <- g[!is.na(g$delta_pi) & abs(g$delta_pi) >= dp, ]
+  gk <- g[!is.na(g$delta_pi) & abs(g$delta_pi) >= dpi_thr(g, dp), ]
   grase_tab <- bind_rows(grase_tab,
     score_tool(gk[, c("gene", "sim_type", "imp")], sprintf("GrASE_dpi%.1f", dp)))
 }
@@ -228,7 +240,7 @@ if (all(file.exists(file.path(BASE, str_src)))) {
     function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
       comment.char = "", stringsAsFactors = FALSE)[,
       c("gene","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
-        "transcripts1","transcripts2")]))
+        "setdiff1","setdiff2","transcripts1","transcripts2")]))
   sg$src <- rep(names(str_src), times = sn)
   sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene)
   sg <- sg[!is.na(sg$padj2) & sg$padj2 < 0.01 &
@@ -238,7 +250,7 @@ if (all(file.exists(file.path(BASE, str_src)))) {
   K <- c("gene","sim_type","imp")
   grase_tab <- bind_rows(grase_tab, score_tool(sg[, K], "GrASE_stranded"))
   for (dp in c(0.1, 0.2)) {
-    sk <- sg[!is.na(sg$delta_pi) & abs(sg$delta_pi) >= dp, ]
+    sk <- sg[!is.na(sg$delta_pi) & abs(sg$delta_pi) >= dpi_thr(sg, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(sk[, K], sprintf("GrASE_stranded_dpi%.1f", dp)))
   }
@@ -279,7 +291,7 @@ read_merged <- function(f) {
   d$imp <- lapply(ifelse(grepl("diff1", d$comparison), d$transcripts1, d$transcripts2), parse_list)
   d$sim_type <- get_st(d$gene)
   d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
-  d[, c("gene", "sim_type", "src", "delta_pi", "imp")]
+  d[, c("gene", "sim_type", "src", "comparison", "setdiff1", "setdiff2", "delta_pi", "imp")]
 }
 mg_int <- read_merged(merged_src[["internal"]])
 mg_tss <- read_merged(merged_src[["TSSTTS"]])
@@ -294,7 +306,7 @@ if (!is.null(mg_tss)) {
   ## Effect-size variants on the merged unit, so every matched triple has a
   ## merged member:  GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1, etc.
   for (dp in c(0.1, 0.2)) {
-    mk <- mg[!is.na(mg$delta_pi) & abs(mg$delta_pi) >= dp, ]
+    mk <- mg[!is.na(mg$delta_pi) & abs(mg$delta_pi) >= dpi_thr(mg, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_dpi%.1f", dp)))
   }
@@ -311,7 +323,7 @@ if (all(file.exists(file.path(BASE, mstr)))) {
   KEEP <- c("gene","sim_type","imp")
   grase_tab <- bind_rows(grase_tab, score_tool(ms[, KEEP], "GrASE_merged_stranded"))
   for (dp in c(0.1, 0.2)) {
-    mk <- ms[!is.na(ms$delta_pi) & abs(ms$delta_pi) >= dp, ]
+    mk <- ms[!is.na(ms$delta_pi) & abs(ms$delta_pi) >= dpi_thr(ms, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_dpi%.1f", dp)))
   }

@@ -20,7 +20,10 @@ TP/FP/precision are identical between universes by construction; only FN and
 recall differ.
 
 Source: results/eval_metricfair/pr_three_levels.GT_rule.txt (level == "gene"),
-written by scripts/pr_curves_three_levels_gtrule.R. Operating points match the
+written by scripts/pr_curves_three_levels_gtrule.R. n_sig_calls is TP + FP of
+the same file's level == "call", category ALL row at the same tool, threshold
+and universe, so it counts the calls behind the gene rows in the lane the sweep
+was run in. Operating points match the
 rest of the benchmark: padj/FDR < 0.01 for GrASE/DEXSeq/rMATS, P(|dPSI|>=C)
 >= 0.95 for MAJIQ.
 
@@ -32,7 +35,6 @@ import csv, os, collections
 BASE = "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT = os.path.join(BASE, "results/eval_metricfair")
 SWEEP = os.path.join(OUT, "pr_three_levels.GT_rule.txt")
-TXTAB = os.path.join(OUT, "transcript_level_metrics.txt")
 
 THR = {"GrASE": "0.01", "GrASE_merged_all": "0.01",
        "GrASE_merged_dpi0.1": "0.01", "GrASE_merged_dpi0.2": "0.01",
@@ -50,11 +52,14 @@ ORDER = ["GrASE", "GrASE_merged_all",
 CATS = ["ALL", "DTE", "DTU", "Background", "DGE"]
 
 sweep = list(csv.DictReader(open(SWEEP), delimiter="\t"))
-# n_sig_calls comes from the transcript table (same calls, already tabulated)
+# n_sig_calls from the sweep's call-level rows: the transcript table names the
+# stranded lane's tools differently and gates effect size differently, so it
+# does not hold the same calls
 calls = {}
-for r in csv.DictReader(open(TXTAB), delimiter="\t"):
-    if r["category"] == "ALL":
-        calls[r["tool"]] = r["n_sig_calls"]
+for r in sweep:
+    if (r["level"] == "call" and r["category"] == "ALL" and r["tool"] in THR
+            and r["thr"] == THR[r["tool"]]):
+        calls[(r["universe"], r["tool"])] = str(int(r["TP"]) + int(r["FP"]))
 
 idx = collections.defaultdict(dict)
 for r in sweep:
@@ -78,7 +83,7 @@ for uni in ("restricted", "full"):
                 P, R = float(r["precision"]), float(r["recall"])
                 f1 = 0.0 if P + R == 0 else 2 * P * R / (P + R)
                 fh.write("\t".join([
-                    cat, t, THR[t], calls.get(t, "NA"),
+                    cat, t, THR[t], calls[(uni, t)],
                     r["n_pos"], r["n_neg"], r["TP"], r["FP"], r["FN"], r["TN"],
                     f"{R:.4f}", f"{P:.4f}", f"{f1:.4f}"]) + "\n")
     print(f"wrote {path}")
