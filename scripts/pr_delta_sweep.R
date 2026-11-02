@@ -32,22 +32,34 @@ suppressMessages({library(dplyr)})
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT  <- file.path(BASE, "results/eval_metricfair")
 GT   <- file.path(BASE, "results/gt/bipartition_merged_gt.stranded.txt")
-DIRS <- file.path(BASE, c("bipartition.merged.stranded.test.modelcomp",
-                          "bipartition.merged.TSSTTS.stranded.test.modelcomp"))
+DIRS <- file.path(BASE, c("bipartition.merged.stranded.test.EBapprox",
+                          "bipartition.merged.TSSTTS.stranded.test.EBapprox"))
 MODELS <- c(EBapprox = "betabinom_EBapprox")
 COL <- c(EBapprox="#1f78b4", EBmap="#33a02c", MLE="#e31a1c", wilcoxon="#6a3d9a")
 THR <- c(1e-4, 1e-3, 0.01, 0.05, 0.1, 0.2)
 DELTAS <- c(-Inf, -2, -1, -0.5, 0, 0.5, 1, 1.5, 2)
 PADJ   <- 0.01
 
-## Two-stage rule, identical to the tool sweep: within-gene BH RECOMPUTED from
-## raw p-values, then max with the gene-level padj. Must not use the stored
-## `padj`, which pvalueAdjustment.R populates only for genes clearing a
-## hardcoded alpha at stage 1 and leaves NA elsewhere -- combining that with
-## padj_gene screens genes twice and truncates the sweep above that alpha.
-two_stage <- function(pv, gene, padj_gene) {
-  within <- ave(pv, gene, FUN = function(x) p.adjust(x, method = "BH"))
-  pmax(within, padj_gene)
+## Two-stage rule, identical to the tool sweep (pr_curves_three_levels_gtrule.R):
+## nested_bh recomputed per test file at every threshold t. A unit is called at
+## t iff padj_gene < t and within-gene BH x m/R(t) < t, with m the genes with a
+## finite padj_gene and R(t) those below t. Returns the smallest such t.
+two_stage <- function(pv, gene, padj_gene, src) {
+  out <- rep(NA_real_, length(pv))
+  for (s in unique(src)) {
+    i  <- which(src == s)
+    w  <- ave(pv[i], gene[i], FUN = function(x) p.adjust(x, method = "BH"))
+    gp <- padj_gene[i][!duplicated(gene[i])]
+    gp <- sort(gp[!is.na(gp)])
+    g  <- unique(gp)
+    cnt <- findInterval(g, gp)                  # R(t) just above each padj_gene value
+    x  <- w * length(gp)                        # within-gene BH times m
+    j  <- findInterval(x, g * cnt, left.open = TRUE) + 1
+    above <- ifelse(j <= length(g), g[pmin(j, length(g))], Inf)
+    below <- ifelse(j > 1, x / cnt[pmax(j - 1, 1)], Inf)
+    out[i] <- pmax(padj_gene[i], pmin(above, below))
+  }
+  out
 }
 
 ## Simulation category per GENE, assigned exactly as pr_curves_three_levels_gtrule.R
@@ -90,7 +102,7 @@ for (nm in names(MODELS)) {
         "padj","padj_gene","p.value","lfc_diff_net")]))
   d$src <- rep(c("internal","TSSTTS"), times = n)
   d$uid <- paste(d$src, d$gene, d$event, d$comparison, sep = "|")
-  d$stat <- two_stage(d$p.value, d$gene, d$padj_gene)
+  d$stat <- two_stage(d$p.value, d$gene, d$padj_gene, d$src)
   ## Testability must be recorded BEFORE stat is coerced to 1: a unit whose
   ## p-value is NA (read floor, independent filtering) is a non-call, not a
   ## unit the model could have called. The restricted universe keeps only the
