@@ -48,5 +48,5 @@ run () {
 
 run wilcoxon
 run betabinom_MLE
-run betabinom_EBmap --phi phi.merged.TSSTTS.stranded.txt --use_phi_loess --independent_filtering
+run betabinom_EBmap --phi phi.merged.TSSTTS.stranded.txt --use_phi_loess --independent_filtering --padj_threshold=0.01
 echo "=== done ==="

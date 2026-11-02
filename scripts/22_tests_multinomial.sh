@@ -13,7 +13,7 @@ S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts
 
 for a in internal TSSTTS; do
   echo "=== multinomial $a  $(date +%H:%M:%S) ==="
-  Rscript $S/exontest.R \
+  Rscript $S/exontest.R --independent_filtering --padj_threshold=0.01 \
     --file=multinomial.${a}.exoncnt.combined.txt \
     --countdir=multinomial.${a}.stranded.counts/ \
     --outdir=multinomial.stranded.test.EBplugin \

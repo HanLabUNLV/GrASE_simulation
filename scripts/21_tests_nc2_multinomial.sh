@@ -24,7 +24,7 @@ for a in internal TSSTTS; do
     --countdir=n_choose_2.${a}.stranded.counts/ \
     --outdir=n_choose_2.stranded.test.EBapprox \
     --splittype=n_choose_2 --model=betabinom_EBapprox \
-    --phi=phi.nc2.${a}.stranded.txt --use_phi_loess --independent_filtering \
+    --phi=phi.nc2.${a}.stranded.txt --use_phi_loess --independent_filtering --padj_threshold=0.01 \
     --min_reads=10 --cond1=group1 --cond2=group2 \
     &> nc2.${a}.stranded.log
   echo "  -> $(stat -c %s n_choose_2.stranded.test.EBapprox/test_n_choose_2.${a}_betabinom_EBapprox.txt 2>/dev/null || echo FAILED)"
