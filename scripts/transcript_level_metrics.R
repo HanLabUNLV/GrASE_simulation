@@ -36,8 +36,10 @@
 # categories partition: DTE + DTU + Background + DGE = ALL.
 #
 # Call rules, as implemented below (padj 0.01 throughout):
-#   GrASE : nested_bh at 0.01 per test file (two_stage) AND lfc_diff_net > 0. The
-#           _dpi0.1 / _dpi0.2 variants add |delta_pi| >= 0.1 / 0.2.
+#   GrASE : grase::is_significant() at 0.01 on the nested_bh padj per test file
+#           (two_stage): lfc_diff_net > 0, raw and per-base |delta_pi| >= 0.05,
+#           |effect_size| >= 0.5, d_support >= 10. The _dpi0.1 / _dpi0.2 variants
+#           raise the |delta_pi| floor to 0.1 / 0.2.
 #   DEXSeq: exon-level padj < 0.01.
 #   MAJIQ : an LSV is called iff its MAX junction has P(changing) >= 0.95 at the
 #           stated C (0.20 default, 0.10 permissive). The LSV, not the junction,
@@ -54,7 +56,7 @@
 # script scores in transcript currency against the simulation design directly,
 # so it needs no GT_rule and DEXSeq (which has none) is scored on equal terms.
 
-suppressPackageStartupMessages({ library(dplyr); library(rtracklayer) })
+suppressPackageStartupMessages({ library(dplyr); library(rtracklayer); library(grase) })
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT_DIR <- file.path(BASE, "results/eval_metricfair")
 load(file.path(BASE, "swimdown/simulate/data/simulate.rda"))
@@ -200,10 +202,21 @@ two_stage <- function(pv, gene, padj_gene, src) {
 ## are the same calls as the PR sweep and gene tables. Unset gives a uniform gate.
 SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
 MIN_DPI_SJ <- 0.05
-dpi_thr <- function(d, dp) {
-  if (!SJAWARE) return(rep(dp, nrow(d)))
-  sd <- ifelse(grepl("diff1", d$comparison), d$setdiff1, d$setdiff2)
-  ifelse(is.na(sd) | sd %in% c("NA", ""), MIN_DPI_SJ, dp)
+## CALL CONDITION: grase::is_significant(), the rule exontest.R applies, on the two-stage padj:
+## lfc_diff_net > 0, |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
+## raw alone where a side has no length), |effect_size| >= MIN_EFFECT, d_support >= MIN_READS
+## (a no-op on runs without d_support). Same rule as pr_curves_three_levels_gtrule.R. The per-base
+## column comes from Rpkg/scripts/add_perbase_calls.R, run on the result files.
+MIN_DPI <- 0.05; MIN_EFFECT <- 0.5; MIN_READS <- 10
+grase_ok <- function(d, dp = MIN_DPI, padj = d$padj2)
+  is_significant(d, 0.01, 0, dp, if (SJAWARE) MIN_DPI_SJ else dp, MIN_READS, padj = padj,
+                 use_perbase = "both", min_effect = MIN_EFFECT)
+GR_COLS <- c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
+             "delta_pi_perbase", "effect_size", "d_support", "setdiff1", "setdiff2", "transcripts1", "transcripts2")
+read_gr <- function(f) {
+  x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
+                  stringsAsFactors = FALSE)
+  x[, intersect(GR_COLS, names(x))]
 }
 
 ## --- GrASE ------------------------------------------------------------------
@@ -212,15 +225,11 @@ grase_src <- c(internal = "bipartition.test.fulldesign/test_bipartition.internal
                TSSTTS   = "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
 g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE, sep = "\t",
               quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
-g <- bind_rows(lapply(grase_src,
-  function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
-                         comment.char = "", stringsAsFactors = FALSE)[,
-    c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
-      "setdiff1", "setdiff2", "transcripts1", "transcripts2")]))
+g <- bind_rows(lapply(grase_src, read_gr))
 g$src <- rep(names(grase_src), times = g_n)
-## base call condition: BOTH nested_BH stages below 0.01, AND lfc_diff_net > 0
+## base call condition: BOTH nested_BH stages below 0.01, AND the is_significant() gates
 g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene, g$src)
-g <- g[!is.na(g$padj2) & g$padj2 < 0.01 & !is.na(g$lfc_diff_net) & g$lfc_diff_net > 0, ]
+g <- g[grase_ok(g), ]
 g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
 g$sim_type <- get_st(g$gene)
 grase_tab <- score_tool(g[, c("gene", "sim_type", "imp")], "GrASE")
@@ -229,7 +238,7 @@ grase_tab <- score_tool(g[, c("gene", "sim_type", "imp")], "GrASE")
 ## the table compares MAJIQ WITH an effect-size threshold against GrASE WITHOUT
 ## one, which is not a like-for-like operating point.
 for (dp in c(0.1, 0.2)) {
-  gk <- g[!is.na(g$delta_pi) & abs(g$delta_pi) >= dpi_thr(g, dp), ]
+  gk <- g[grase_ok(g, dp), ]
   grase_tab <- bind_rows(grase_tab,
     score_tool(gk[, c("gene", "sim_type", "imp")], sprintf("GrASE_dpi%.1f", dp)))
 }
@@ -243,21 +252,16 @@ str_src <- c(internal = "bipartition.internal.stranded.test.EBapprox/test_bipart
 if (all(file.exists(file.path(BASE, str_src)))) {
   sn <- vapply(str_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE,
         sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
-  sg <- bind_rows(lapply(str_src,
-    function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
-      comment.char = "", stringsAsFactors = FALSE)[,
-      c("gene","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
-        "setdiff1","setdiff2","transcripts1","transcripts2")]))
+  sg <- bind_rows(lapply(str_src, read_gr))
   sg$src <- rep(names(str_src), times = sn)
   sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene, sg$src)
-  sg <- sg[!is.na(sg$padj2) & sg$padj2 < 0.01 &
-           !is.na(sg$lfc_diff_net) & sg$lfc_diff_net > 0, ]
+  sg <- sg[grase_ok(sg), ]
   sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
   sg$sim_type <- get_st(sg$gene)
   K <- c("gene","sim_type","imp")
   grase_tab <- bind_rows(grase_tab, score_tool(sg[, K], "GrASE_stranded"))
   for (dp in c(0.1, 0.2)) {
-    sk <- sg[!is.na(sg$delta_pi) & abs(sg$delta_pi) >= dpi_thr(sg, dp), ]
+    sk <- sg[grase_ok(sg, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(sk[, K], sprintf("GrASE_stranded_dpi%.1f", dp)))
   }
@@ -293,12 +297,11 @@ read_merged <- function(f) {
   d <- read.table(p, header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
   d$padj2 <- two_stage(d$p.value, d$gene, d$padj_gene, rep(f, nrow(d)))
-  d <- d[!is.na(d$padj2) & d$padj2 < 0.01 &
-         !is.na(d$lfc_diff_net) & d$lfc_diff_net > 0, ]
+  d <- d[grase_ok(d), ]
   d$imp <- lapply(ifelse(grepl("diff1", d$comparison), d$transcripts1, d$transcripts2), parse_list)
   d$sim_type <- get_st(d$gene)
   d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
-  d[, c("gene", "sim_type", "src", "comparison", "setdiff1", "setdiff2", "delta_pi", "imp")]
+  d[, c(intersect(c(GR_COLS, "padj2"), names(d)), "sim_type", "src", "imp")]
 }
 mg_int <- read_merged(merged_src[["internal"]])
 mg_tss <- read_merged(merged_src[["TSSTTS"]])
@@ -313,7 +316,7 @@ if (!is.null(mg_tss)) {
   ## Effect-size variants on the merged unit, so every matched triple has a
   ## merged member:  GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1, etc.
   for (dp in c(0.1, 0.2)) {
-    mk <- mg[!is.na(mg$delta_pi) & abs(mg$delta_pi) >= dpi_thr(mg, dp), ]
+    mk <- mg[grase_ok(mg, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_dpi%.1f", dp)))
   }
@@ -330,7 +333,7 @@ if (all(file.exists(file.path(BASE, mstr)))) {
   KEEP <- c("gene","sim_type","imp")
   grase_tab <- bind_rows(grase_tab, score_tool(ms[, KEEP], "GrASE_merged_stranded"))
   for (dp in c(0.1, 0.2)) {
-    mk <- ms[!is.na(ms$delta_pi) & abs(ms$delta_pi) >= dpi_thr(ms, dp), ]
+    mk <- ms[grase_ok(ms, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_dpi%.1f", dp)))
   }
@@ -399,8 +402,7 @@ if (all(file.exists(file.path(BASE, mstr)))) {
     d$source <- as.character(d$source); d$sink <- as.character(d$sink)
     d$src <- k; d }))
   bh_raw$padj_BH <- p.adjust(bh_raw$p.value, method = "BH")
-  bh <- bh_raw[!is.na(bh_raw$padj_BH) & bh_raw$padj_BH < 0.01 &
-               !is.na(bh_raw$lfc_diff_net) & bh_raw$lfc_diff_net > 0, ]
+  bh <- bh_raw[grase_ok(bh_raw, padj = bh_raw$padj_BH), ]
   bh$imp <- lapply(ifelse(grepl("diff1", bh$comparison), bh$transcripts1, bh$transcripts2), parse_list)
   bh$sim_type <- get_st(bh$gene)
   grase_tab <- bind_rows(grase_tab, score_tool(bh[, KEEP], "GrASE_BH"))

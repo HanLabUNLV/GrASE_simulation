@@ -36,7 +36,7 @@
 # Output: results/eval_metricfair/pr_three_levels.GT_rule.txt
 #         plots/pr_three_levels.GT_rule.*.png
 
-suppressPackageStartupMessages({ library(dplyr); library(rtracklayer) })
+suppressPackageStartupMessages({ library(dplyr); library(rtracklayer); library(grase) })
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT  <- file.path(BASE, "results/eval_metricfair")
 CACHE <- file.path(OUT, "pr_calls_cache.GT_rule.rds")
@@ -165,12 +165,17 @@ grase_files <- if (STRANDED)
     "bipartition.TSSTTS.stranded.test.EBapprox/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt") else
   c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
     "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+## columns the call rule reads; d_support is absent from the unstranded exonic run, where the read floor is a no-op
+GR_COLS <- c("gene","event","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
+             "delta_pi_perbase","effect_size","d_support","setdiff1","setdiff2","transcripts1","transcripts2")
 grase_n <- vapply(grase_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE, sep="\t",
                   quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
-gr <- bind_rows(lapply(grase_files,
-  function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
-    comment.char = "", stringsAsFactors = FALSE)[, c("gene","event","comparison","padj","padj_gene",
-    "p.value","lfc_diff_net","delta_pi","setdiff1","setdiff2","transcripts1","transcripts2")]))
+read_gr <- function(f) {
+  x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
+                  stringsAsFactors = FALSE)
+  x[, intersect(GR_COLS, names(x))]
+}
+gr <- bind_rows(lapply(grase_files, read_gr))
 gr$src <- rep(c("internal","TSSTTS"), times = grase_n)
 ## UNIVERSE = EVERY enumerated bipartition test (339,684). A test whose gene was
 ## screened out at nested-BH stage 1 went through stage 1 and was rejected; that
@@ -219,11 +224,15 @@ SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
 MIN_DPI_SJ <- 0.05
 if (SJAWARE) cat(sprintf("*** source-aware dpi gate: sj sides use %.2f ***\n", MIN_DPI_SJ))
 ## per-row dpi threshold for a nominal gate dp
-dpi_thr <- function(d, dp) {
-  if (!SJAWARE) return(rep(dp, nrow(d)))
-  sd <- ifelse(grepl("diff1", d$comparison), d$setdiff1, d$setdiff2)
-  ifelse(is.na(sd) | sd %in% c("NA", ""), MIN_DPI_SJ, dp)
-}
+## CALL CONDITION: grase::is_significant(), the rule exontest.R applies, on the two-stage padj below.
+## padj_thr is Inf so the threshold is left to the sweep; every other condition is the shipped one:
+## lfc_diff_net > DELTA, |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
+## raw alone where a side has no length), |effect_size| >= MIN_EFFECT, and d_support >= MIN_READS.
+## The per-base column comes from Rpkg/scripts/add_perbase_calls.R, run on the result files.
+MIN_DPI <- 0.05; MIN_EFFECT <- 0.5; MIN_READS <- 10
+grase_ok <- function(d, dp = MIN_DPI, padj = d$padj2)
+  is_significant(d, Inf, DELTA, dp, if (SJAWARE) MIN_DPI_SJ else dp, MIN_READS, padj = padj,
+                 use_perbase = "both", min_effect = MIN_EFFECT)
 
 two_stage <- function(pv, gene, padj_gene, src) {
   out <- rep(NA_real_, length(pv))
@@ -243,15 +252,15 @@ two_stage <- function(pv, gene, padj_gene, src) {
   out
 }
 gr$padj2 <- two_stage(gr$p.value, gr$gene, gr$padj_gene, gr$src)
-lfcok  <- !is.na(gr$lfc_diff_net) & gr$lfc_diff_net > DELTA
+grok <- grase_ok(gr)
 st <- gr$padj2
 st[is.na(st)] <- 1                    # no statistic: a CALL condition, not a gap
-st[!lfcok]    <- 1                    # lfc is a CALL condition
+st[!grok]     <- 1                    # the effect-size and read gates are CALL conditions
 calls$GrASE <- list(
   gene = gr$gene, stat = st, gene_stat = gr$padj_gene,
   units = as.list(gr$uid), imp = gr$imp, lower_better = TRUE)
-cat(sprintf("  GrASE universe %d tests; callable (padj computed AND lfc>0): %d\n",
-            nrow(gr), sum(!is.na(gr$padj) & lfcok)))
+cat(sprintf("  GrASE universe %d tests; callable (padj computed AND is_significant gates): %d\n",
+            nrow(gr), sum(grok)))
 ## GrASE restricted to INTERNAL bubbles. MAJIQ cannot test a TSS/TTS boundary
 ## at all, so the strict like-for-like against a junction uses this entry --
 ## pooling TSS/TTS compares GrASE's extra reach against MAJIQ's absence rather
@@ -261,7 +270,7 @@ cat(sprintf("  GrASE universe %d tests; callable (padj computed AND lfc>0): %d\n
 ## the filtered ones un-callable) because a call-side filter does not change
 ## what was tested. Getting these two backwards puts recall out by ~12x.
 ki <- gr$src == "internal"
-sti <- gr$padj2[ki]; sti[is.na(sti)] <- 1; sti[!lfcok[ki]] <- 1
+sti <- gr$padj2[ki]; sti[is.na(sti)] <- 1; sti[!grok[ki]] <- 1
 calls$GrASE_internal <- list(
   gene = gr$gene[ki], stat = sti, gene_stat = gr$padj_gene[ki],
   units = as.list(gr$uid[ki]), imp = gr$imp[ki], lower_better = TRUE)
@@ -272,7 +281,7 @@ cat(sprintf("  GrASE_internal: %d of %d tests (universe restricted)\n", sum(ki),
 ## Without these the curves compare MAJIQ WITH an effect-size threshold against
 ## GrASE WITHOUT one, which is not a like-for-like operating characteristic.
 for (dp in c(0.1, 0.2)) {
-  k <- lfcok & !is.na(gr$padj2) & !is.na(gr$delta_pi) & abs(gr$delta_pi) >= dpi_thr(gr, dp)
+  k <- grase_ok(gr, dp)
   ## Keep EVERY tested unit in the call list and make filtered-out tests
   ## un-callable (padj set to 1, lower_better). Subsetting gr instead would
   ## shrink `all_units`, and recall's denominator (upos_restr) is computed from
@@ -304,29 +313,26 @@ merged_files <- if (STRANDED) c(
 if (all(file.exists(file.path(BASE, merged_files)))) {
   mgn <- vapply(merged_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE, sep="\t",
                 quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
-  mg <- bind_rows(lapply(merged_files,
-    function(f) read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "",
-      comment.char = "", stringsAsFactors = FALSE)[, c("gene","event","comparison","padj","padj_gene",
-      "p.value","lfc_diff_net","delta_pi","setdiff1","setdiff2","transcripts1","transcripts2")]))
+  mg <- bind_rows(lapply(merged_files, read_gr))
   mg$src <- rep(c("internal","TSSTTS"), times = mgn)
   mg$txs <- ifelse(grepl("diff1", mg$comparison), mg$transcripts1, mg$transcripts2)
   mg$uid <- paste(mg$src, mg$gene, mg$event, mg$comparison, sep = "|")
   mg$imp <- lapply(mg$txs, parse_l, sep = ",")
   mg$padj2 <- two_stage(mg$p.value, mg$gene, mg$padj_gene, mg$src)
-  mlfcok <- !is.na(mg$lfc_diff_net) & mg$lfc_diff_net > DELTA
-  mst <- mg$padj2; mst[is.na(mst)] <- 1; mst[!mlfcok] <- 1
+  mok <- grase_ok(mg)
+  mst <- mg$padj2; mst[is.na(mst)] <- 1; mst[!mok] <- 1
   calls$GrASE_merged_all <- list(
     gene = mg$gene, stat = mst, gene_stat = mg$padj_gene,
     units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
   cat(sprintf("  GrASE_merged_all universe %d tests; callable: %d\n",
-              nrow(mg), sum(!is.na(mg$padj) & mlfcok)))
+              nrow(mg), sum(mok)))
   ## Effect-size variants on the merged unit, matching the exonic ones:
   ##   GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1
   ## Call-side, so the universe is UNCHANGED (see the GrASE_dpi note above --
   ## subsetting here would shrink all_units and make recall rise under a
   ## stricter filter).
   for (dp in c(0.1, 0.2)) {
-    mk <- mlfcok & !is.na(mg$padj2) & !is.na(mg$delta_pi) & abs(mg$delta_pi) >= dpi_thr(mg, dp)
+    mk <- grase_ok(mg, dp)
     mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
     calls[[sprintf("GrASE_merged_dpi%.1f", dp)]] <- list(
       gene = mg$gene, stat = mstk, gene_stat = mg$padj_gene,
@@ -337,7 +343,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   ## internal-only merged bubbles: UNIVERSE restriction (as GrASE_internal is),
   ## the strict like-for-like against a junction tool.
   mki <- mg$src == "internal"
-  msti <- mg$padj2[mki]; msti[is.na(msti)] <- 1; msti[!mlfcok[mki]] <- 1
+  msti <- mg$padj2[mki]; msti[is.na(msti)] <- 1; msti[!mok[mki]] <- 1
   calls$GrASE_merged_internal <- list(
     gene = mg$gene[mki], stat = msti, gene_stat = mg$padj_gene[mki],
     units = as.list(mg$uid[mki]), imp = mg$imp[mki], lower_better = TRUE)
@@ -351,7 +357,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   ## the curve shapes are partly an FDR-architecture artifact rather than a
   ## property of the test. Carrying both makes that explicit.
   mbh <- p.adjust(mg$p.value, method = "BH")
-  mbh[!mlfcok] <- 1
+  mbh[!grase_ok(mg, padj = mbh)] <- 1
   calls$GrASE_BH <- list(
     gene = mg$gene, stat = mbh, gene_stat = mg$padj_gene,
     units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
