@@ -3,7 +3,7 @@
 #
 # rMATS numbers its events from 0 in every run, so the plus and minus catalogs
 # reuse the same IDs and neither matches the original numbering that
-# results.beforegatefix/sim_junction_gt.txt is keyed to. The combined table here
+# results/sim_junction_gt.txt is keyed to. The combined table here
 # prefixes every event with its strand ("plus:SE:123"), matching the uid the
 # sweep builds when STRANDED=1.
 #

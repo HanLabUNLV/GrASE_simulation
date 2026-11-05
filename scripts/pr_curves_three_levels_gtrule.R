@@ -67,7 +67,7 @@ STRANDED <- nzchar(Sys.getenv("STRANDED"))
 if (STRANDED) cat("*** STRANDED inputs ***\n")
 ## rMATS renumbers its events from 0 in every run, so the stranded plus/minus
 ## IDs collide with each other and with the original numbering that
-## results.beforegatefix/sim_junction_gt.txt is keyed to. Event IDs are
+## results/sim_junction_gt.txt is keyed to. Event IDs are
 ## strand-prefixed below to keep them unique, which means they no longer join to
 ## that GT -- rMATS UNIT rows are therefore emitted as NA under STRANDED rather
 ## than silently scored against stale truth. Transcript and gene levels are
@@ -133,7 +133,7 @@ n_pos_lsvrule_cat <- table(lsvr$sim_type[lsvr$GT_rule_lsv])
 ## out as TP 0 / FP 0 / n_pos 0 -- but only on a cached rerun, which is why the
 ## first stranded sweep looked fine.
 jgt_all <- read.table(if (STRANDED && !RMATS_UNIT_NA) RMATS_STR_GT else
-                      file.path(BASE, "results.beforegatefix/sim_junction_gt.txt"),
+                      file.path(BASE, "results/sim_junction_gt.txt"),
                       header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 jgt_all <- jgt_all[!(jgt_all$n_inc_tx == 0 | jgt_all$n_skip_tx == 0), ]
 jgt_all$uid <- if (STRANDED && !RMATS_UNIT_NA)
@@ -456,7 +456,7 @@ for (Cv in c("0.20", "0.10")) {
 csv_mean <- function(x) { v <- suppressWarnings(as.numeric(strsplit(x, ",")[[1]]))
                           if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE) }
 jgt <- read.table(if (STRANDED && !RMATS_UNIT_NA) RMATS_STR_GT else
-                  file.path(BASE, "results.beforegatefix/sim_junction_gt.txt"),
+                  file.path(BASE, "results/sim_junction_gt.txt"),
                   header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 jgt <- jgt[!(jgt$n_inc_tx == 0 | jgt$n_skip_tx == 0), ]
 ## uid must match how the rMATS block keys its events below: strand-prefixed
