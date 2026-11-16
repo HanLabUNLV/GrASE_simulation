@@ -7,9 +7,11 @@
 # no length, i.e. use_perbase = TRUE), raw AND per-base (use_perbase = "both"), and
 # |effect_size| (the log odds ratio of the fitted model), on the stranded merged
 # EBapprox results, scored under GT_rule at the unit level -- the same inputs,
-# ground truth, universes and two-stage padj as pr_delta_sweep.R.
+# ground truth and universes as pr_delta_sweep.R. padj is plain BH over the raw p-values
+# of all tests, internal and TSS/TTS pooled, as pr_curves_three_levels_gtrule.R uses by
+# default; PADJ_METHOD=nested_BH gives exontest.R's two-stage nested BH instead.
 #
-# A unit is called at cutoff c iff grase::is_significant() passes it with the two-stage
+# A unit is called at cutoff c iff grase::is_significant() passes it with
 # padj < 0.01, lfc_diff_net > 0 and that one measure >= c (the other effect gate off, no
 # read floor). One cutoff is applied to every side; the pipeline's separate min_dpi_sj for
 # junction-sourced sides is not modelled. The shipped rule (is_significant() defaults:
@@ -35,6 +37,9 @@ DPI_CUTS <- c(0, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3)
 CUTS  <- list(delta_pi = DPI_CUTS, delta_pi_perbase = DPI_CUTS, delta_pi_both = DPI_CUTS,
               effect_size = c(0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3))
 
+PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
+stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
+cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
 ## Two-stage rule, identical to pr_delta_sweep.R / pr_curves_three_levels_gtrule.R.
 two_stage <- function(pv, gene, padj_gene, src) {
   out <- rep(NA_real_, length(pv))
@@ -81,7 +86,8 @@ GATE <- list(
   effect_size      = function(ct) is_significant(d, PADJ, 0, 0, 0, 0, padj = d$stat, min_effect = ct))
 d$src <- rep(c("internal","TSSTTS"), times = vapply(rd, nrow, integer(1)))
 d$uid <- paste(d$src, d$gene, d$event, d$comparison, sep = "|")
-d$stat <- two_stage(d$p.value, d$gene, d$padj_gene, d$src)
+d$stat <- if (PADJ_METHOD == "BH") p.adjust(d$p.value, method = "BH") else
+  two_stage(d$p.value, d$gene, d$padj_gene, d$src)
 d$testable <- !is.na(d$stat)
 d$stat[is.na(d$stat)] <- 1
 d$truth <- pos[d$uid]; d$truth[is.na(d$truth)] <- FALSE
@@ -113,7 +119,7 @@ write.table(tab, file.path(OUT, "effect_sweep.GT_rule.txt"), sep = "\t", quote =
 con <- file(file.path(OUT, "effect_sweep.GT_rule.table.txt"), "w")
 for (uni in c("full", "restricted")) for (cc in CATS) {
   x <- tab[tab$universe == uni & tab$category == cc, ]
-  writeLines(sprintf("\n=== %s | %s universe | GT_rule unit level | padj %.2f ===", cc, uni, PADJ), con)
+  writeLines(sprintf("\n=== %s | %s universe | GT_rule unit level | %s padj %.2f ===", cc, uni, PADJ_METHOD, PADJ), con)
   writeLines(sprintf("%-22s %7s %7s %7s %9s %9s %8s", "measure", "cutoff", "TP", "FP", "precision", "recall", "F1"), con)
   for (i in seq_len(nrow(x)))
     writeLines(sprintf("%-22s %7s %7d %7d %9.4f %9.4f %8.4f", x$measure[i],
@@ -147,7 +153,8 @@ for (uni in c("full", "restricted")) {
                              "|effect_size|", "pipeline calls"),
              pch = c(19, 19, 19, 19, 0), col = c(COL_M, "black"), lty = c(1, 1, 1, 1, NA), lwd = 2, bty = "n", cex = 0.7)
   }
-  mtext(sprintf("Effect-size cutoff sweep, EBapprox, stranded merged (GT_rule, unit level, padj %.2f, %s universe)", PADJ, uni),
+  mtext(sprintf("Effect-size cutoff sweep, EBapprox, stranded merged (GT_rule, unit level, %s padj %.2f, %s universe)",
+                ifelse(PADJ_METHOD == "BH", "plain BH", "nested BH"), PADJ, uni),
         side = 3, line = 0.6, outer = TRUE, cex = 0.85, font = 2)
   invisible(dev.off())
 }

@@ -104,7 +104,7 @@ if (file.exists(BPMGT)) {
 }
 ## unit truth map for a GrASE variant
 bp_map <- function(tool) {
-  if (grepl("^GrASE_merged", tool) || identical(tool, "GrASE_BH")) {
+  if (grepl("^GrASE_merged", tool) || identical(tool, "GrASE_nestedBH")) {
     if (is.null(bp_pos_merged))
       stop("GrASE_merged_all needs results/gt/bipartition_merged_gt.txt -- ",
            "run scripts/infer_bipartition_gt.R --merged first")
@@ -223,16 +223,21 @@ DELTA <- 0
 SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
 MIN_DPI_SJ <- 0.05
 if (SJAWARE) cat(sprintf("*** source-aware dpi gate: sj sides use %.2f ***\n", MIN_DPI_SJ))
-## per-row dpi threshold for a nominal gate dp
-## CALL CONDITION: grase::is_significant(), the rule exontest.R applies, on the two-stage padj below.
-## padj_thr is Inf so the threshold is left to the sweep; every other condition is the shipped one:
-## lfc_diff_net > DELTA, |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
-## raw alone where a side has no length), |effect_size| >= MIN_EFFECT, and d_support >= MIN_READS.
-## The per-base column comes from Rpkg/scripts/add_perbase_calls.R, run on the result files.
-MIN_DPI <- 0.05; MIN_EFFECT <- 0.5; MIN_READS <- 10
-grase_ok <- function(d, dp = MIN_DPI, padj = d$padj2)
-  is_significant(d, Inf, DELTA, dp, if (SJAWARE) MIN_DPI_SJ else dp, MIN_READS, padj = padj,
-                 use_perbase = "both", min_effect = MIN_EFFECT)
+## CALL CONDITION: grase::is_significant() on the padj below (grase_padj, PADJ_METHOD), with
+## padj_thr Inf so the threshold is left to the sweep. Every curve keeps lfc_diff_net > DELTA and
+## d_support >= MIN_READS; the two effect-size gates are what the curves vary, one at a time:
+##   dpi curves     |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
+##                  raw alone where a side has no length), |effect_size| gate off
+##   effect curves  |effect_size| >= eff, |delta_pi| gate off
+## so GrASE_merged_all (dp 0, eff 0) is the curve with neither gate. With SJAWARE a
+## junction-sourced side's dpi cutoff is min(dp, MIN_DPI_SJ). The per-base column comes from
+## Rpkg/scripts/add_perbase_calls.R, run on the result files.
+MIN_READS <- 10
+## exontest.R defaults (--min_dpi 0.05 --min_dpi_sj 0.05 --min_effect 0.5)
+DEF_DPI <- 0.05; DEF_EFF <- 0.5
+grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
+  is_significant(d, Inf, DELTA, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
+                 use_perbase = "both", min_effect = eff)
 
 two_stage <- function(pv, gene, padj_gene, src) {
   out <- rep(NA_real_, length(pv))
@@ -251,7 +256,17 @@ two_stage <- function(pv, gene, padj_gene, src) {
   }
   out
 }
-gr$padj2 <- two_stage(gr$p.value, gr$gene, gr$padj_gene, gr$src)
+## PADJ_METHOD selects the padj every GrASE entry is swept on. BH (the default):
+## plain BH over the raw p-values of all tests, internal and TSS/TTS pooled --
+## the same FDR architecture as DEXSeq's bins. nested_BH: two_stage() above,
+## exontest.R's own default. GrASE_nestedBH below always carries the nested rule,
+## so both stay in the table.
+PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
+stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
+cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
+grase_padj <- function(pv, gene, padj_gene, src)
+  if (PADJ_METHOD == "BH") p.adjust(pv, method = "BH") else two_stage(pv, gene, padj_gene, src)
+gr$padj2 <- grase_padj(gr$p.value, gr$gene, gr$padj_gene, gr$src)
 grok <- grase_ok(gr)
 st <- gr$padj2
 st[is.na(st)] <- 1                    # no statistic: a CALL condition, not a gap
@@ -318,7 +333,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   mg$txs <- ifelse(grepl("diff1", mg$comparison), mg$transcripts1, mg$transcripts2)
   mg$uid <- paste(mg$src, mg$gene, mg$event, mg$comparison, sep = "|")
   mg$imp <- lapply(mg$txs, parse_l, sep = ",")
-  mg$padj2 <- two_stage(mg$p.value, mg$gene, mg$padj_gene, mg$src)
+  mg$padj2 <- grase_padj(mg$p.value, mg$gene, mg$padj_gene, mg$src)
   mok <- grase_ok(mg)
   mst <- mg$padj2; mst[is.na(mst)] <- 1; mst[!mok] <- 1
   calls$GrASE_merged_all <- list(
@@ -340,6 +355,26 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
     cat(sprintf("  GrASE_merged_dpi%.1f: %d of %d tests callable (universe unchanged)\n",
                 dp, sum(mk), nrow(mg)))
   }
+  ## |effect_size| (log odds ratio) variants, delta_pi gate off; call-side as above
+  for (ef in c(0.5, 1)) {
+    mk <- grase_ok(mg, eff = ef)
+    mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
+    calls[[sprintf("GrASE_merged_eff%.1f", ef)]] <- list(
+      gene = mg$gene, stat = mstk, gene_stat = mg$padj_gene,
+      units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
+    cat(sprintf("  GrASE_merged_eff%.1f: %d of %d tests callable (universe unchanged)\n",
+                ef, sum(mk), nrow(mg)))
+  }
+  ## exontest.R's default call rule on the same padj: |delta_pi| >= 0.05 on both
+  ## scales (0.05 for junction-sourced sides too) AND |effect_size| >= 0.5.
+  ## Call-side, universe unchanged, as for the single-gate variants above.
+  mk <- grase_ok(mg, DEF_DPI, DEF_EFF)
+  mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
+  calls$GrASE_merged_default <- list(
+    gene = mg$gene, stat = mstk, gene_stat = mg$padj_gene,
+    units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
+  cat(sprintf("  GrASE_merged_default: %d of %d tests callable (universe unchanged)\n",
+              sum(mk), nrow(mg)))
   ## internal-only merged bubbles: UNIVERSE restriction (as GrASE_internal is),
   ## the strict like-for-like against a junction tool.
   mki <- mg$src == "internal"
@@ -349,20 +384,20 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
     units = as.list(mg$uid[mki]), imp = mg$imp[mki], lower_better = TRUE)
   cat(sprintf("  GrASE_merged_internal: %d of %d tests (universe restricted)\n",
               sum(mki), nrow(mg)))
-  ## Same merged unit and the same raw p-values, but PLAIN BH instead of
-  ## exontest.R's nested_BH gene screen -- matching DEXSeq's FDR architecture.
-  ## Under nested_BH only 1,345 null-gene units are reachable at any threshold
-  ## (99.4% get padj = NA at stage 1); under plain BH 209,981 are. The two agree
-  ## closely at padj 0.01 (132 vs 127 null calls) and diverge as it loosens, so
-  ## the curve shapes are partly an FDR-architecture artifact rather than a
-  ## property of the test. Carrying both makes that explicit.
-  mbh <- p.adjust(mg$p.value, method = "BH")
-  mbh[!grase_ok(mg, padj = mbh)] <- 1
-  calls$GrASE_BH <- list(
-    gene = mg$gene, stat = mbh, gene_stat = mg$padj_gene,
+  ## Same merged unit and the same raw p-values, but exontest.R's NESTED BH
+  ## (gene screen, then BH within the selected genes) instead of plain BH. Under
+  ## nested BH only 1,345 null-gene units are reachable at any threshold (99.4%
+  ## get padj = NA at stage 1); under plain BH 209,981 are. The two agree closely
+  ## at padj 0.01 and diverge as it loosens, so carrying both makes the FDR
+  ## architecture explicit. Gates as GrASE_merged_default, so the two differ
+  ## only in the padj procedure.
+  mnb <- two_stage(mg$p.value, mg$gene, mg$padj_gene, mg$src)
+  mnb[!grase_ok(mg, DEF_DPI, DEF_EFF, padj = mnb)] <- 1
+  calls$GrASE_nestedBH <- list(
+    gene = mg$gene, stat = mnb, gene_stat = mg$padj_gene,
     units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
-  cat(sprintf("  GrASE_BH (plain BH): %d of %d tests callable\n",
-              sum(!is.na(mbh) & mbh < 0.01), nrow(mg)))
+  cat(sprintf("  GrASE_nestedBH: %d of %d tests callable\n",
+              sum(!is.na(mnb) & mnb < 0.01), nrow(mg)))
 } else {
   cat("  GrASE_merged_all: merged test files absent, skipping\n")
 }
@@ -553,8 +588,11 @@ GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_all = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.1" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.2" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              "GrASE_merged_eff0.5" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              "GrASE_merged_eff1.0" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              GrASE_BH = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              GrASE_nestedBH = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              GrASE_merged_default = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_dpi0.1 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_dpi0.2 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
@@ -650,8 +688,8 @@ for (tool in names(calls)) {
     sig <- if (cl$lower_better) cl$stat < thr else cl$stat >= thr
     ## A test with no statistic is a NON-CALL, not an unknown. Without this,
     ## ctp <- sum(sig & hit_unit) returns NA and silently voids the whole
-    ## call-level row. GrASE_BH is the exposed one: its stat is a plain
-    ## p.adjust() over raw p-values, which returns NA wherever exontest.R's
+    ## call-level row. A plain-BH stat is the exposed one: p.adjust()
+    ## over raw p-values, which returns NA wherever exontest.R's
     ## read-support filter set p.value <- NA. The unit and gene paths already
     ## guard with !is.na(padj2); this closes the same hole for every tool.
     sig[is.na(sig)] <- FALSE
@@ -785,12 +823,13 @@ LEVELS <- c("unit","transcript_strict","transcript_tolerant","gene")
 ## count is substituted only where the exonic pipeline had nothing to count), so
 ## the exonic curves are a subset view and drawing both doubled the red curves
 ## for no added information. Both families stay in the TABLE.
-## GrASE_BH first so it heads the legend, then the nested_BH GrASE family.
-## DEXSeq moved to blue to free the orange range for GrASE_BH.
-COL <- c("GrASE_BH"="#fec44f",
+## GrASE_nestedBH first so it heads the legend, then the GrASE family on PADJ_METHOD.
+## DEXSeq moved to blue to free the orange range for GrASE_nestedBH.
+COL <- c("GrASE_merged_default"="#000000", "GrASE_nestedBH"="#fec44f",
          GrASE="#fb6a4a", "GrASE_merged_all"="#fb6a4a",
          "GrASE_dpi0.1"="#de2d26", "GrASE_merged_dpi0.1"="#de2d26",
          "GrASE_dpi0.2"="#a50f15", "GrASE_merged_dpi0.2"="#a50f15",
+         "GrASE_merged_eff0.5"="#f768a1", "GrASE_merged_eff1.0"="#ae017e",
          "GrASE_internal"="#67000d", "GrASE_merged_internal"="#67000d",
          DEXSeq="#3182bd",
          MAJIQ_C0.10="#a1d99b", MAJIQ_C0.20="#238b45",
@@ -818,7 +857,8 @@ disp <- function(x) {
   ## `significant` column is padj<0.01 AND |delta_pi|>=0.1. Labelling the ungated
   ## run "GrASE" would present something 65% larger than the shipped default
   ## (1,012 vs 615 calls on the merged stranded internal file).
-  x <- sub("^GrASE_BH$", "GrASE (plain BH)", x)
+  x <- sub("^GrASE_nestedBH$", "GrASE (nested BH)", x)
+  x <- sub("^GrASE_merged_default$", "GrASE (default)", x)
   sub("^GrASE_merged_", "GrASE_", sub("^GrASE_merged_all$", "GrASE_dpi0", x))
 }
 

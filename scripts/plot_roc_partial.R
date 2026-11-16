@@ -2,19 +2,20 @@
 # Partial ROC, transcript and gene space, including GrASE under BOTH FDR
 # architectures.
 #
-# exontest.R ships with --padj_method nested_BH (gene screen, then units inside
-# surviving genes), while DEXSeq applies plain BH across bins. That difference
-# alone shapes the curves: under nested_BH only 1,345 null units are reachable
-# at any threshold, against 209,981 under plain BH. GrASE_BH here is plain BH
-# applied post hoc to the SAME raw p-values, so the two curves differ only in
-# the multiple-testing procedure. At padj 0.01 they are nearly identical (132 vs
+# The GrASE curves use plain BH over the raw p-values (pr_curves_three_levels_gtrule.R,
+# PADJ_METHOD default), the same procedure DEXSeq applies across bins.
+# exontest.R --padj_method nested_BH, its former default (gene screen, then units inside
+# surviving genes); that difference alone shapes the curves: under nested_BH
+# only 1,345 null units are reachable at any threshold, against 209,981 under
+# plain BH. GrASE_nestedBH is nested BH on the SAME raw p-values, so it and
+# GrASE_dpi0 differ only in the multiple-testing procedure. At padj 0.01 they are nearly identical (132 vs
 # 127 null calls); they diverge only as the threshold loosens.
 #
 # Curves start at padj 0.001 (MAJIQ prob 0.99) and loosen. PARTIAL ROC: the grid
 # stops at 0.2 and structural non-coverage caps TPR well below 1, so AUC is not
 # computable and the axes are zoomed to the operating quadrant.
 #
-# GrASE_BH is read from pr_three_levels.GT_rule.txt like every other curve.
+# GrASE_nestedBH is read from pr_three_levels.GT_rule.txt like every other curve.
 # It used to be recomputed here from the annotated test files (p.adjust on the
 # raw p-values, implicated sets re-parsed, TPR/FPR re-derived against
 # simulate.rda). That second implementation agreed with the table to all
@@ -36,10 +37,11 @@ source(file.path(B, "scripts/plot_palette.R"))
 tab <- read.table(file.path(B,"results/eval_metricfair/pr_three_levels.GT_rule.txt"),
                   header=TRUE, sep="\t", stringsAsFactors=FALSE)
 
-# GrASE_BH first: it is a GrASE variant, so it belongs with the other GrASE
+# GrASE_nestedBH first: it is a GrASE variant, so it belongs with the other GrASE
 # entries in the legend rather than orphaned at the end. intersect() below
 # preserves this order.
-TOOLS <- c("GrASE_BH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
+TOOLS <- c("GrASE_merged_default","GrASE_nestedBH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
+           "GrASE_merged_eff0.5","GrASE_merged_eff1.0",
            "DEXSeq","MAJIQ_C0.10","MAJIQ_C0.20","rMATS","rMATS_dpsi0.1","rMATS_dpsi0.2")
 # COL, disp(), plab() come from plot_palette.R (sourced above).
 get <- function(lv, U="full"){ d <- tab[tab$level==lv & tab$universe==U & tab$category=="ALL", ]
@@ -81,7 +83,7 @@ for (cfg in list(c(TXLV, sprintf("transcript space (%s FP rule)",TAG)), c("gene"
 }
 mtext(sprintf("Partial ROC (%s universe): TPR vs FPR, curves start at padj 0.001 (MAJIQ prob 0.99) and loosen. UP-AND-LEFT is better.", U),
       outer=TRUE, cex=0.85, font=2)
-mtext("GrASE curves use the merged exon+SJ unit with nested_BH (exontest.R default); GrASE (plain BH) is plain BH on the same raw p-values, matching DEXSeq's FDR architecture",
+mtext("GrASE curves use the merged exon+SJ unit with plain BH, matching DEXSeq's FDR architecture; GrASE (nested BH) is exontest.R's two-stage nested BH on the same raw p-values",
       side=1, outer=TRUE, cex=0.62, line=0.3, font=3)
 invisible(dev.off())
 }
@@ -107,7 +109,7 @@ for (cfg in list(c("transcript_strict","transcript space (strict FP rule)"),
 }
 mtext(sprintf("Partial ROC (%s universe): TPR vs FPR, curves start at padj 0.001 (MAJIQ prob 0.99) and loosen. UP-AND-LEFT is better.", U),
       outer=TRUE, cex=0.85, font=2)
-mtext("GrASE curves use the merged exon+SJ unit with nested_BH (exontest.R default); GrASE (plain BH) is plain BH on the same raw p-values, matching DEXSeq's FDR architecture",
+mtext("GrASE curves use the merged exon+SJ unit with plain BH, matching DEXSeq's FDR architecture; GrASE (nested BH) is exontest.R's two-stage nested BH on the same raw p-values",
       side=1, outer=TRUE, cex=0.62, line=0.3, font=3)
 invisible(dev.off())
 cat(sprintf("wrote plots/roc_partial.GT_rule.all3%s.pdf\n", SUF))

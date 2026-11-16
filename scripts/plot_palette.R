@@ -7,19 +7,25 @@
 # Any new benchmark figure should source this rather than copy the vectors.
 #
 # Conventions:
-#   GrASE       reds, darkening with the effect-size gate (dpi0 -> dpi0.2)
-#   GrASE_BH    yellow-orange -- a GrASE variant, but an FDR-architecture change
-#               (plain BH) rather than an effect-size gate, so off the red ramp
+#   GrASE       reds, darkening with the delta_pi gate (dpi0 -> dpi0.2)
+#   GrASE_eff   pinks, darkening with the |effect_size| gate (eff0.5 -> eff1.0)
+#   GrASE_merged_default  black -- exontest.R's default call rule (both gates)
+#   GrASE_nestedBH  yellow-orange -- a GrASE variant, but an FDR-architecture change
+#               (nested BH; the other GrASE entries use plain BH) rather than an
+#               effect-size gate, so off the red ramp
 #   DEXSeq      blue
 #   MAJIQ       greens, darkening with confidence threshold
 #   rMATS       purples, light -> dark with the dPSI gate
-COL <- c("GrASE_BH"            = "#fec44f",
+COL <- c("GrASE_merged_default" = "#000000",
+         "GrASE_nestedBH"      = "#fec44f",
          "GrASE"               = "#fb6a4a",
          "GrASE_merged_all"    = "#fb6a4a",
          "GrASE_dpi0.1"        = "#de2d26",
          "GrASE_merged_dpi0.1" = "#de2d26",
          "GrASE_dpi0.2"        = "#a50f15",
          "GrASE_merged_dpi0.2" = "#a50f15",
+         "GrASE_merged_eff0.5" = "#f768a1",
+         "GrASE_merged_eff1.0" = "#ae017e",
          "GrASE_internal"        = "#67000d",
          "GrASE_merged_internal" = "#67000d",
          "DEXSeq"              = "#3182bd",
@@ -36,5 +42,6 @@ COL <- c("GrASE_BH"            = "#fec44f",
 disp <- function(x)
   sub("^GrASE_merged_", "GrASE_", sub("^GrASE_merged_all$", "GrASE_dpi0", x))
 
-# Legend label: GrASE_BH spelled out, everything else via disp().
-plab <- function(x) ifelse(x == "GrASE_BH", "GrASE (plain BH)", disp(x))
+# Legend label: GrASE_nestedBH spelled out, everything else via disp().
+plab <- function(x) ifelse(x == "GrASE_nestedBH", "GrASE (nested BH)",
+                     ifelse(x == "GrASE_merged_default", "GrASE (default)", disp(x)))

@@ -25,7 +25,8 @@ source(file.path(B, "scripts/plot_palette.R"))
 tab <- read.table(file.path(B,"results/eval_metricfair/pr_three_levels.GT_rule.txt"),
                   header=TRUE, sep="\t", stringsAsFactors=FALSE)
 d <- tab[tab$level=="transcript_strict" & tab$universe=="full", ]
-TOOLS <- c("GrASE_BH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
+TOOLS <- c("GrASE_merged_default","GrASE_nestedBH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
+           "GrASE_merged_eff0.5","GrASE_merged_eff1.0",
            "DEXSeq","MAJIQ_C0.10","MAJIQ_C0.20","rMATS","rMATS_dpsi0.1","rMATS_dpsi0.2")
 # Structural negative class: all transcripts of Background and DGE genes. Its
 # size must not depend on whether a tool happened to make calls in a category --

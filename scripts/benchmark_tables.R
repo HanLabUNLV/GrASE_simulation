@@ -31,17 +31,18 @@ txm  <- read.table(file.path(OUT,"transcript_level_metrics.txt"), header=TRUE,
 cl   <- readRDS(file.path(OUT,"pr_calls_cache.GT_rule.rds"))
 ngene <- vapply(cl, function(z) length(unique(z$gene)), integer(1))
 
-LAB   <- c("GrASE (plain BH)","GrASE_dpi0","GrASE_dpi0.1","GrASE_dpi0.2","GrASE_internal",
+LAB   <- c("GrASE (default)","GrASE (nested BH)","GrASE_dpi0","GrASE_dpi0.1","GrASE_dpi0.2","GrASE_eff0.5","GrASE_eff1.0","GrASE_internal",
            "MAJIQ_C0.20","MAJIQ_C0.10","DEXSeq","rMATS","rMATS_dpsi0.1","rMATS_dpsi0.2")
-SWEEP <- c("GrASE_BH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
-           "GrASE_merged_internal","MAJIQ_C0.20","MAJIQ_C0.10","DEXSeq",
+SWEEP <- c("GrASE_merged_default","GrASE_nestedBH","GrASE_merged_all","GrASE_merged_dpi0.1","GrASE_merged_dpi0.2",
+           "GrASE_merged_eff0.5","GrASE_merged_eff1.0","GrASE_merged_internal","MAJIQ_C0.20","MAJIQ_C0.10","DEXSeq",
            "rMATS","rMATS_dpsi0.1","rMATS_dpsi0.2")
 ## Every tool here is on strand-corrected input. rMATS used to be the exception
 ## (its rows were the uncorrected run) -- strand correction costs it zero TPs but
 ## removes ~1.3% of its strict FPs, so leaving it uncorrected mixed conventions
 ## within one table for no reason.
-TXNM  <- c("GrASE_BH","GrASE_merged_stranded","GrASE_merged_stranded_dpi0.1",
-           "GrASE_merged_stranded_dpi0.2","GrASE_merged_stranded_internal",
+TXNM  <- c("GrASE_merged_stranded_default","GrASE_nestedBH","GrASE_merged_stranded","GrASE_merged_stranded_dpi0.1",
+           "GrASE_merged_stranded_dpi0.2","GrASE_merged_stranded_eff0.5","GrASE_merged_stranded_eff1.0",
+           "GrASE_merged_stranded_internal",
            "MAJIQ_C0.20_stranded","MAJIQ_C0.10_stranded","DEXSeq_stranded",
            "rMATS_stranded","rMATS_stranded_dpsi0.1","rMATS_stranded_dpsi0.2")
 thr_of <- function(t) if (grepl("^MAJIQ", t)) 0.95 else 0.01
@@ -130,7 +131,7 @@ write.table(bind_rows(rows), file.path(OUT,"gene_level_table_fmt.txt"), sep="\t"
 ## Computed by transcript_level_metrics.R, which owns the manipulated-transcript
 ## truth and the internal/TSSTTS src tag; formatted here with the other tables.
 ## The Total row reconciles with the transcript table: recovered(internal) +
-## recovered(TSSTTS) - both = the GrASE_dpi0 row's TP.
+## recovered(TSSTTS) - both = the GrASE (default) row's TP.
 attf <- file.path(OUT, "tsstts_attribution.txt")
 if (file.exists(attf)) {
   at <- read.table(attf, header=TRUE, sep="\t", stringsAsFactors=FALSE,

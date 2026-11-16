@@ -24,10 +24,11 @@ LEVELS <- c("unit","transcript_strict","transcript_tolerant","gene")
 
 ## Styling copied verbatim from pr_curves_three_levels_gtrule.R so these panels
 ## are colour-consistent with the sweep's own figures.
-COL <- c("GrASE_BH"="#fec44f",
+COL <- c("GrASE_merged_default"="#000000", "GrASE_nestedBH"="#fec44f",
          GrASE="#fb6a4a", "GrASE_merged_all"="#fb6a4a",
          "GrASE_dpi0.1"="#de2d26", "GrASE_merged_dpi0.1"="#de2d26",
          "GrASE_dpi0.2"="#a50f15", "GrASE_merged_dpi0.2"="#a50f15",
+         "GrASE_merged_eff0.5"="#f768a1", "GrASE_merged_eff1.0"="#ae017e",
          "GrASE_internal"="#67000d", "GrASE_merged_internal"="#67000d",
          DEXSeq="#3182bd",
          MAJIQ_C0.10="#a1d99b", MAJIQ_C0.20="#238b45",
@@ -37,7 +38,8 @@ PLOT_TOOLS <- setdiff(names(COL),
                       c("GrASE", "GrASE_dpi0.1", "GrASE_dpi0.2",
                         "GrASE_internal", "GrASE_merged_internal"))
 disp <- function(x) {
-  x <- sub("^GrASE_BH$", "GrASE (plain BH)", x)
+  x <- sub("^GrASE_nestedBH$", "GrASE (nested BH)", x)
+  x <- sub("^GrASE_merged_default$", "GrASE (default)", x)
   sub("^GrASE_merged_", "GrASE_", sub("^GrASE_merged_all$", "GrASE_dpi0", x))
 }
 LVLAB <- c(unit = "Unit", transcript_strict = "transcript_strict",

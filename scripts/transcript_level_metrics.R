@@ -36,10 +36,13 @@
 # categories partition: DTE + DTU + Background + DGE = ALL.
 #
 # Call rules, as implemented below (padj 0.01 throughout):
-#   GrASE : grase::is_significant() at 0.01 on the nested_bh padj per test file
-#           (two_stage): lfc_diff_net > 0, raw and per-base |delta_pi| >= 0.05,
-#           |effect_size| >= 0.5, d_support >= 10. The _dpi0.1 / _dpi0.2 variants
-#           raise the |delta_pi| floor to 0.1 / 0.2.
+#   GrASE : grase::is_significant() at 0.01 on the padj of PADJ_METHOD (default
+#           plain BH over the internal and TSS/TTS files of a lane pooled;
+#           nested_BH = two_stage per test file): lfc_diff_net > 0, d_support >= 10,
+#           no effect-size gate. The _dpi0.1 / _dpi0.2 variants add raw and per-base
+#           |delta_pi| >= 0.1 / 0.2; the merged _eff0.5 / _eff1.0 variants add
+#           |effect_size| >= 0.5 / 1.0 instead. Same gates as
+#           pr_curves_three_levels_gtrule.R.
 #   DEXSeq: exon-level padj < 0.01.
 #   MAJIQ : an LSV is called iff its MAX junction has P(changing) >= 0.95 at the
 #           stated C (0.20 default, 0.10 permissive). The LSV, not the junction,
@@ -196,21 +199,35 @@ two_stage <- function(pv, gene, padj_gene, src) {
   out
 }
 
+## PADJ_METHOD: "BH" (default) is plain BH over every test of a lane, internal and
+## TSS/TTS pooled; "nested_BH" is two_stage() per test file. Same switch as
+## pr_curves_three_levels_gtrule.R.
+PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
+stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
+cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
+grase_padj <- function(pv, gene, padj_gene, src)
+  if (PADJ_METHOD == "BH") p.adjust(pv, method = "BH") else two_stage(pv, gene, padj_gene, src)
+
 ## SJAWARE=1 applies the same dpi gate as pr_curves_three_levels_gtrule.R: a side
 ## whose distinct set is empty in the test output (junction-sourced in the merged
-## unit) needs |delta_pi| >= 0.05 whatever the nominal gate, so the _dpi rows here
-## are the same calls as the PR sweep and gene tables. Unset gives a uniform gate.
+## unit) uses a |delta_pi| cutoff of min(dp, 0.05), so the _dpi rows here are the
+## same calls as the PR sweep. Unset gives a uniform gate.
 SJAWARE <- nzchar(Sys.getenv("SJAWARE"))
 MIN_DPI_SJ <- 0.05
-## CALL CONDITION: grase::is_significant(), the rule exontest.R applies, on the two-stage padj:
-## lfc_diff_net > 0, |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
-## raw alone where a side has no length), |effect_size| >= MIN_EFFECT, d_support >= MIN_READS
-## (a no-op on runs without d_support). Same rule as pr_curves_three_levels_gtrule.R. The per-base
-## column comes from Rpkg/scripts/add_perbase_calls.R, run on the result files.
-MIN_DPI <- 0.05; MIN_EFFECT <- 0.5; MIN_READS <- 10
-grase_ok <- function(d, dp = MIN_DPI, padj = d$padj2)
-  is_significant(d, 0.01, 0, dp, if (SJAWARE) MIN_DPI_SJ else dp, MIN_READS, padj = padj,
-                 use_perbase = "both", min_effect = MIN_EFFECT)
+## CALL CONDITION: grase::is_significant() at padj 0.01. Every row keeps lfc_diff_net > 0 and
+## d_support >= MIN_READS (a no-op on runs without d_support); the effect-size gates vary one at
+## a time, as in pr_curves_three_levels_gtrule.R:
+##   dpi rows     |delta_pi| >= dp on both the raw and the per-base scale (use_perbase "both",
+##                raw alone where a side has no length), |effect_size| gate off
+##   effect rows  |effect_size| >= eff, |delta_pi| gate off
+## The base rows (dp 0, eff 0) have neither gate. The per-base column comes from
+## Rpkg/scripts/add_perbase_calls.R, run on the result files.
+MIN_READS <- 10
+## exontest.R defaults (--min_dpi 0.05 --min_dpi_sj 0.05 --min_effect 0.5)
+DEF_DPI <- 0.05; DEF_EFF <- 0.5
+grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
+  is_significant(d, 0.01, 0, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
+                 use_perbase = "both", min_effect = eff)
 GR_COLS <- c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
              "delta_pi_perbase", "effect_size", "d_support", "setdiff1", "setdiff2", "transcripts1", "transcripts2")
 read_gr <- function(f) {
@@ -227,8 +244,8 @@ g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header 
               quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
 g <- bind_rows(lapply(grase_src, read_gr))
 g$src <- rep(names(grase_src), times = g_n)
-## base call condition: BOTH nested_BH stages below 0.01, AND the is_significant() gates
-g$padj2 <- two_stage(g$p.value, g$gene, g$padj_gene, g$src)
+## base call condition: padj below 0.01, AND the is_significant() gates
+g$padj2 <- grase_padj(g$p.value, g$gene, g$padj_gene, g$src)
 g <- g[grase_ok(g), ]
 g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
 g$sim_type <- get_st(g$gene)
@@ -254,7 +271,7 @@ if (all(file.exists(file.path(BASE, str_src)))) {
         sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
   sg <- bind_rows(lapply(str_src, read_gr))
   sg$src <- rep(names(str_src), times = sn)
-  sg$padj2 <- two_stage(sg$p.value, sg$gene, sg$padj_gene, sg$src)
+  sg$padj2 <- grase_padj(sg$p.value, sg$gene, sg$padj_gene, sg$src)
   sg <- sg[grase_ok(sg), ]
   sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
   sg$sim_type <- get_st(sg$gene)
@@ -291,27 +308,38 @@ grase_tab <- bind_rows(grase_tab,
 merged_src <- c(
   internal = "bipartition.merged.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
   TSSTTS   = "bipartition.merged.TSSTTS.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
+## read_merged() returns every test of one file; grase_calls() adjusts a lane
+## (its internal and TSS/TTS files together, so plain BH pools them) and keeps
+## the base calls.
 read_merged <- function(f) {
   p <- file.path(BASE, f)
   if (!file.exists(p)) return(NULL)
-  d <- read.table(p, header = TRUE, sep = "\t", quote = "", comment.char = "",
-                  stringsAsFactors = FALSE)
-  d$padj2 <- two_stage(d$p.value, d$gene, d$padj_gene, rep(f, nrow(d)))
-  d <- d[grase_ok(d), ]
+  d <- read_gr(f)
+  ## the unstranded merged TSS/TTS file has no d_support column; Inf keeps the read
+  ## floor a no-op for it once it is stacked with a file that has one
+  if (!"d_support" %in% names(d)) d$d_support <- Inf
+  d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
+  d
+}
+add_imp <- function(d) {
   d$imp <- lapply(ifelse(grepl("diff1", d$comparison), d$transcripts1, d$transcripts2), parse_list)
   d$sim_type <- get_st(d$gene)
-  d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
-  d[, c(intersect(c(GR_COLS, "padj2"), names(d)), "sim_type", "src", "imp")]
+  d
+}
+grase_calls <- function(d) {
+  d$padj2 <- grase_padj(d$p.value, d$gene, d$padj_gene, d$src)
+  add_imp(d[grase_ok(d), ])
 }
 mg_int <- read_merged(merged_src[["internal"]])
 mg_tss <- read_merged(merged_src[["TSSTTS"]])
+mg <- grase_calls(bind_rows(mg_int, mg_tss))
+mg_int <- mg[mg$src == "internal", ]
 KEEP <- c("gene", "sim_type", "imp")
 ## internal merged + exonic TSS/TTS -- the earlier operating point, kept so the
 ## TSS/TTS extension can be read off as a separate increment.
 grase_tab <- bind_rows(grase_tab, score_tool(
   bind_rows(mg_int[, KEEP], g[g$src == "TSSTTS", KEEP]), "GrASE_merged"))
 if (!is.null(mg_tss)) {
-  mg <- bind_rows(mg_int, mg_tss)
   grase_tab <- bind_rows(grase_tab, score_tool(mg[, KEEP], "GrASE_merged_all"))
   ## Effect-size variants on the merged unit, so every matched triple has a
   ## merged member:  GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1, etc.
@@ -319,6 +347,12 @@ if (!is.null(mg_tss)) {
     mk <- mg[grase_ok(mg, dp), ]
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_dpi%.1f", dp)))
+  }
+  ## |effect_size| (log odds ratio) variants, delta_pi gate off
+  for (ef in c(0.5, 1)) {
+    mk <- mg[grase_ok(mg, eff = ef), ]
+    grase_tab <- bind_rows(grase_tab,
+      score_tool(mk[, KEEP], sprintf("GrASE_merged_eff%.1f", ef)))
   }
   ## internal-only merged: the like-for-like against a junction tool, since
   ## MAJIQ cannot test a TSS/TTS boundary at all.
@@ -329,7 +363,8 @@ if (!is.null(mg_tss)) {
 mstr <- c(internal = "bipartition.merged.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
           TSSTTS   = "bipartition.merged.TSSTTS.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
 if (all(file.exists(file.path(BASE, mstr)))) {
-  ms <- bind_rows(lapply(names(mstr), function(k) read_merged(mstr[[k]])))
+  ms_raw <- bind_rows(lapply(names(mstr), function(k) read_merged(mstr[[k]])))
+  ms <- grase_calls(ms_raw)
   KEEP <- c("gene","sim_type","imp")
   grase_tab <- bind_rows(grase_tab, score_tool(ms[, KEEP], "GrASE_merged_stranded"))
   for (dp in c(0.1, 0.2)) {
@@ -337,6 +372,15 @@ if (all(file.exists(file.path(BASE, mstr)))) {
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_dpi%.1f", dp)))
   }
+  for (ef in c(0.5, 1)) {
+    mk <- ms[grase_ok(ms, eff = ef), ]
+    grase_tab <- bind_rows(grase_tab,
+      score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_eff%.1f", ef)))
+  }
+  ## exontest.R's default call rule: |delta_pi| >= 0.05 on both scales (0.05 for
+  ## junction-sourced sides too) AND |effect_size| >= 0.5
+  msd <- ms[grase_ok(ms, DEF_DPI, DEF_EFF), ]
+  grase_tab <- bind_rows(grase_tab, score_tool(msd[, KEEP], "GrASE_merged_stranded_default"))
   ## internal-only merged+stranded: the strict like-for-like against a junction
   ## tool, since MAJIQ cannot test a TSS/TTS boundary at all.
   grase_tab <- bind_rows(grase_tab,
@@ -358,7 +402,7 @@ if (all(file.exists(file.path(BASE, mstr)))) {
   ##
   ## Recovery is the SAME predicate score_tool uses for tx_recall (a significant
   ## call on the transcript's own gene implicates it), so the Total column
-  ## reconciles with the GrASE_merged_stranded transcript recall by construction.
+  ## reconciles with the GrASE_merged_stranded_default transcript recall by construction.
   recovered_by <- function(calls) {
     sigc <- calls[calls$sim_type %in% c("DTE", "DTU"), ]
     imp_by_gene <- split(sigc$imp, sigc$gene)
@@ -368,8 +412,8 @@ if (all(file.exists(file.path(BASE, mstr)))) {
     }, manip_det$tx, manip_det$gene)
   }
   att <- data.frame(tx = manip_det$tx, sim_type = manip_det$sim_type,
-                    by_int = recovered_by(ms[ms$src == "internal", ]),
-                    by_tss = recovered_by(ms[ms$src == "TSSTTS", ]),
+                    by_int = recovered_by(msd[msd$src == "internal", ]),
+                    by_tss = recovered_by(msd[msd$src == "TSSTTS", ]),
                     stringsAsFactors = FALSE)
   att$class <- ifelse( att$by_int &  att$by_tss, "both",
                ifelse( att$by_int & !att$by_tss, "internal only",
@@ -389,23 +433,13 @@ if (all(file.exists(file.path(BASE, mstr)))) {
       at["internal only", "ALL"], at["TSS/TTS only", "ALL"],
       at["both", "ALL"], at["Total", "ALL"]))
 
-  ## Same merged unit and the same raw p-values, but PLAIN BH instead of
-  ## exontest.R's nested_BH gene screen -- matching DEXSeq's FDR architecture.
-  ## Under nested_BH only 1,345 null-gene units are reachable at any threshold;
-  ## under plain BH 209,981 are. The two agree closely at padj 0.01 and diverge
-  ## as it loosens, so carrying both makes the architecture explicit.
-  bh_raw <- bind_rows(lapply(names(mstr), function(k) {
-    d <- read.table(file.path(BASE, mstr[[k]]), header = TRUE, sep = "\t",
-                    quote = "", comment.char = "", stringsAsFactors = FALSE)
-    ## source/sink are node ids: integer in the internal file, character ("R"/"L")
-    ## in TSS/TTS, so bind_rows needs them coerced before stacking.
-    d$source <- as.character(d$source); d$sink <- as.character(d$sink)
-    d$src <- k; d }))
-  bh_raw$padj_BH <- p.adjust(bh_raw$p.value, method = "BH")
-  bh <- bh_raw[grase_ok(bh_raw, padj = bh_raw$padj_BH), ]
-  bh$imp <- lapply(ifelse(grepl("diff1", bh$comparison), bh$transcripts1, bh$transcripts2), parse_list)
-  bh$sim_type <- get_st(bh$gene)
-  grase_tab <- bind_rows(grase_tab, score_tool(bh[, KEEP], "GrASE_BH"))
+  ## Same merged unit, raw p-values and gates as GrASE_merged_stranded_default, but
+  ## exontest.R's NESTED BH (two_stage per test file) instead of plain BH, so the
+  ## FDR architecture is carried as a comparator.
+  nb <- ms_raw
+  nb$padj2 <- two_stage(nb$p.value, nb$gene, nb$padj_gene, nb$src)
+  nb <- add_imp(nb[grase_ok(nb, DEF_DPI, DEF_EFF), ])
+  grase_tab <- bind_rows(grase_tab, score_tool(nb[, KEEP], "GrASE_nestedBH"))
 }
 
 ## --- DEXSeq -----------------------------------------------------------------

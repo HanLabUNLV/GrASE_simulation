@@ -27,7 +27,7 @@
 #            test_bipartition.merged_<model>.annotated.txt
 #   outputs: results/eval_metricfair/pr_models.GT_rule.txt
 #            plots/pr_models.GT_rule.png
-suppressMessages({library(dplyr)})
+suppressMessages({library(dplyr); library(grase)})
 
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT  <- file.path(BASE, "results/eval_metricfair")
@@ -39,6 +39,19 @@ COL <- c(EBapprox="#1f78b4", EBmap="#33a02c", MLE="#e31a1c", wilcoxon="#6a3d9a")
 THR <- c(1e-4, 1e-3, 0.01, 0.05, 0.1, 0.2)
 DELTAS <- c(-Inf, -2, -1, -0.5, 0, 0.5, 1, 1.5, 2)
 PADJ   <- 0.01
+## PADJ_METHOD: "BH" (default) is plain BH over both test files pooled, as in
+## pr_curves_three_levels_gtrule.R; "nested_BH" is two_stage() below.
+PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
+stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
+cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
+## GATES: "default" (default) adds exontest.R's other call conditions to every row:
+## |delta_pi| >= 0.05 on both scales (0.05 for junction-sourced sides too),
+## |effect_size| >= 0.5, d_support >= 10. "none" drops them, leaving padj and the
+## swept lfc_diff_net threshold.
+GATES <- Sys.getenv("GATES", "default")
+stopifnot(GATES %in% c("default", "none"))
+DEF_DPI <- 0.05; DEF_EFF <- 0.5; MIN_READS <- 10
+cat(sprintf("*** call gates: %s ***\n", GATES))
 
 ## Two-stage rule, identical to the tool sweep (pr_curves_three_levels_gtrule.R):
 ## nested_bh recomputed per test file at every threshold t. A unit is called at
@@ -99,16 +112,23 @@ for (nm in names(MODELS)) {
                comment.char="", stringsAsFactors=FALSE)), integer(1))
   d  <- bind_rows(lapply(fs, function(f) read.table(f, header=TRUE, sep="\t", quote="",
         comment.char="", stringsAsFactors=FALSE)[, c("gene","event","comparison",
-        "padj","padj_gene","p.value","lfc_diff_net")]))
+        "padj","padj_gene","p.value","lfc_diff_net","delta_pi","delta_pi_perbase",
+        "effect_size","d_support","setdiff1","setdiff2")]))
   d$src <- rep(c("internal","TSSTTS"), times = n)
   d$uid <- paste(d$src, d$gene, d$event, d$comparison, sep = "|")
-  d$stat <- two_stage(d$p.value, d$gene, d$padj_gene, d$src)
+  d$stat <- if (PADJ_METHOD == "BH") p.adjust(d$p.value, method = "BH") else
+    two_stage(d$p.value, d$gene, d$padj_gene, d$src)
   ## Testability must be recorded BEFORE stat is coerced to 1: a unit whose
   ## p-value is NA (read floor, independent filtering) is a non-call, not a
   ## unit the model could have called. The restricted universe keeps only the
   ## testable ones, so recall is not charged for units GrASE can never reach.
   d$testable <- !is.na(d$stat)
   d$stat[is.na(d$stat)] <- 1
+  ## the gates are CALL conditions, applied after testability is recorded;
+  ## lfc_diff_net is left to the sweep (delta -Inf passes every row here)
+  if (GATES == "default")
+    d$stat[!is_significant(d, Inf, -Inf, DEF_DPI, DEF_DPI, MIN_READS, padj = rep(0, nrow(d)),
+                           use_perbase = "both", min_effect = DEF_EFF)] <- 1
   ## A unit absent from the GT table is a NEGATIVE, not a unit to drop -- this
   ## is the sweep's rule (pr_curves_three_levels_gtrule.R, "Any unit not in the
   ## GT table is a negative"). Dropping them would delete every Background and
@@ -128,7 +148,7 @@ cat(sprintf("common universe: %d units, %d positive (union across models)\n",
 
 ## --- Delta sweep on the post-hoc lfc_diff_net filter -----------------------
 ## Same scoring path as pr_curves_models.R (GT_rule, unit level, stranded
-## merged, nested-BH two-stage), model fixed to EBapprox, sweeping the
+## merged, padj by PADJ_METHOD), model fixed to EBapprox, sweeping the
 ## lfc_diff_net threshold. delta = -Inf is the unfiltered BASELINE.
 ##
 ## Two universes, matching evaluate_posthoc_lfc_filter.R:
@@ -177,8 +197,8 @@ con <- file(file.path(OUT, "delta_sweep.GT_rule.table.txt"), "w")
 for (uni in c("full", "restricted")) for (cc in CATS) {
   x <- tab[tab$universe == uni & tab$category == cc, ]
   if (!nrow(x)) next
-  writeLines(sprintf("\n=== %s | %s universe | GT_rule unit level | padj %.2f ===",
-                     cc, uni, PADJ), con)
+  writeLines(sprintf("\n=== %s | %s universe | GT_rule unit level | %s padj %.2f | gates %s ===",
+                     cc, uni, PADJ_METHOD, PADJ, GATES), con)
   writeLines(sprintf("%8s %8s %8s %9s %9s %8s", "delta", "TP", "FP",
                      "precision", "recall", "F1"), con)
   for (i in seq_len(nrow(x)))
@@ -259,7 +279,7 @@ for (dev_i in 1:1) {
     legend("topright", c("Background", "DGE"), fill = c("#bdbdbd", "#636363"),
            bty = "n", cex = 0.8)
 
-    mtext(sprintf("lfc_diff_net delta sweep, EBapprox, stranded merged (GT_rule, unit level, %s universe)", uni),
+    mtext(sprintf("lfc_diff_net delta sweep, EBapprox, stranded merged, %s (GT_rule, unit level, %s universe)", ifelse(PADJ_METHOD == "BH", "plain BH", "nested BH"), uni),
           side = 3, line = 0.6, outer = TRUE, cex = 0.85, font = 2)
     invisible(dev.off())
   }
