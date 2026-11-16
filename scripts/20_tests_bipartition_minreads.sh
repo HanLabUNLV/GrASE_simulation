@@ -26,6 +26,9 @@ cd $BASE
 
 STAMP=bak_premin_reads
 
+# per-gene DEXSeq GFFs and mate length: exontest.R writes per-base pi, which the
+# default call rule needs (--dpi_gate both)
+GFF=/mnt/data1/home/mirahan/GrASE_simulation/dexseq.gff
 run_arm () {
   local file=$1 cntdir=$2 outdir=$3 phi=$4 log=$5
   echo "=== $outdir ==="
@@ -43,7 +46,7 @@ run_arm () {
     --phi $phi \
     --cond1 group1 --cond2 group2 \
     --use_phi_loess --independent_filtering --padj_threshold=0.01 \
-    --min_reads 10 &> $log
+    --min_reads 10 --gff_dir $GFF --read_length 100 &> $log
   echo "--- support filter lines:"
   grep -c "Support filter" $log || true
   grep "Support filter" $log | head -4 || true

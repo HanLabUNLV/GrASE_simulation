@@ -74,6 +74,9 @@ Rscript $R/merge_exon_sj_counts.R --exon_counts bipartition.TSSTTS.stranded.coun
         --sj_counts sjcnt.TSSTTS --output bipartition.merged.TSSTTS.stranded.counts
 
 echo "=== 4. merged tests (phi estimated fresh from these counts) ==="
+# per-gene DEXSeq GFFs and mate length: exontest.R writes per-base pi, which the
+# default call rule needs (--dpi_gate both)
+GFF=/mnt/data1/home/mirahan/GrASE_simulation/dexseq.gff
 run_test () {   # class countdir outdir phibase annotdir
   local T=$1 CD=$2 OD=$3 PB=$4 AD=$5
   local CF=bipartition.exsj.$T.cnt.combined.txt
@@ -85,7 +88,7 @@ run_test () {   # class countdir outdir phibase annotdir
   Rscript $R/exontest.R --file "$CF" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
       --cond1 group1 --cond2 group2 --use_phi_loess --independent_filtering --padj_threshold=0.01 \
-      --min_reads 10
+      --min_reads 10 --gff_dir $GFF --read_length 100
   for f in $OD/test_bipartition.exsj.${T}_*; do
     ln -sf "$(basename "$f")" "$OD/$(basename "$f" | sed "s/^test_bipartition\.exsj\.${T}_/test_bipartition.merged_/")"
   done

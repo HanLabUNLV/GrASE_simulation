@@ -39,6 +39,9 @@ for f in test_bipartition.merged_betabinom_EBapprox.txt \
   cp -n "$SRC/$f" "$OUT/$f"
 done
 
+# per-gene DEXSeq GFFs and mate length: exontest.R writes per-base pi, which the
+# default call rule needs (--dpi_gate both)
+GFF=/mnt/data1/home/mirahan/GrASE_simulation/dexseq.gff
 run () {   # run <model> [extra args]
   local m=$1; shift
   echo "=== $m ==="
@@ -46,7 +49,7 @@ run () {   # run <model> [extra args]
     --file bipartition.merged.stranded.internal.exoncnt.combined.txt \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
-    --cond1 group1 --cond2 group2 "$@" \
+    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 "$@" \
     &> modelcomp.$m.log
   echo "  -> $(ls -la $OUT/test_bipartition.merged_${m}.txt 2>/dev/null | awk '{print $5}') bytes"
 }
