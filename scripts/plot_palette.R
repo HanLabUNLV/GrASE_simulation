@@ -45,3 +45,17 @@ disp <- function(x)
 # Legend label: GrASE_nestedBH spelled out, everything else via disp().
 plab <- function(x) ifelse(x == "GrASE_nestedBH", "GrASE (nested BH)",
                      ifelse(x == "GrASE_merged_default", "GrASE (default)", disp(x)))
+
+# Main-text figures show GrASE as one |effect_size| sweep on plain BH; the nested
+# BH and delta_pi curves go to the supplementary copy (*.supp.pdf). The sweep is
+# eff0 (no effect-size gate) -> eff0.5 (exontest.R's default) -> eff1.0, on a
+# red ramp that darkens with the gate. GrASE_merged_eff0.5 is the same call set
+# as GrASE_merged_default and is not drawn twice.
+MAIN_TOOLS <- c("GrASE_merged_all", "GrASE_merged_default", "GrASE_merged_eff1.0",
+                "DEXSeq", "MAJIQ_C0.10", "MAJIQ_C0.20",
+                "rMATS", "rMATS_dpsi0.1", "rMATS_dpsi0.2")
+COL_MAIN <- COL
+COL_MAIN[c("GrASE_merged_all", "GrASE_merged_default", "GrASE_merged_eff1.0")] <-
+  c("#fc9272", "#de2d26", "#67000d")
+plab_main <- function(x) ifelse(x == "GrASE_merged_all", "GrASE_eff0",
+                          ifelse(x == "GrASE_merged_default", "GrASE_eff0.5 (default)", plab(x)))

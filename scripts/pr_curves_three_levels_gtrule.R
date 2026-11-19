@@ -166,13 +166,18 @@ grase_files <- if (STRANDED)
   c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
     "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
 ## columns the call rule reads; d_support is absent from the unstranded exonic run, where the read floor is a no-op
-GR_COLS <- c("gene","event","comparison","padj","padj_gene","p.value","lfc_diff_net","delta_pi",
+GR_COLS <- c("gene","event","comparison","padj","padj_gene","p.value","baseMean","lfc_diff_net","delta_pi",
              "delta_pi_perbase","effect_size","d_support","setdiff1","setdiff2","transcripts1","transcripts2")
 grase_n <- vapply(grase_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE, sep="\t",
                   quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
 read_gr <- function(f) {
   x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
+  ## padj_gene is the nested-BH gene screen (BH over genes of the Simes p); exontest.R
+  ## writes it only under --padj_method nested_BH, so a plain-BH run lacks it.
+  ## Rebuilt from the file's own p-values (one class, one contrast per file).
+  if (!"padj_gene" %in% names(x))
+    x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
   x[, intersect(GR_COLS, names(x))]
 }
 gr <- bind_rows(lapply(grase_files, read_gr))
@@ -233,8 +238,8 @@ if (SJAWARE) cat(sprintf("*** source-aware dpi gate: sj sides use %.2f ***\n", M
 ## junction-sourced side's dpi cutoff is min(dp, MIN_DPI_SJ). The per-base column comes from
 ## Rpkg/scripts/add_perbase_calls.R, run on the result files.
 MIN_READS <- 10
-## exontest.R defaults (--min_dpi 0.05 --min_dpi_sj 0.05 --min_effect 0.5)
-DEF_DPI <- 0.05; DEF_EFF <- 0.5
+## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.5): effect-size gate only
+DEF_DPI <- 0; DEF_EFF <- 0.5
 grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
   is_significant(d, Inf, DELTA, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
                  use_perbase = "both", min_effect = eff)
@@ -264,9 +269,20 @@ two_stage <- function(pv, gene, padj_gene, src) {
 PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
 stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
 cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
-grase_padj <- function(pv, gene, padj_gene, src)
-  if (PADJ_METHOD == "BH") p.adjust(pv, method = "BH") else two_stage(pv, gene, padj_gene, src)
-gr$padj2 <- grase_padj(gr$p.value, gr$gene, gr$padj_gene, gr$src)
+## INDEP_FILTER: plain BH runs with independent filtering on baseMean, as exontest.R
+## does by default, on top of the read floor (INDEP_FILTER=0 turns it off). The
+## filter is chosen at padj 0.01.
+INDEP_FILTER <- Sys.getenv("INDEP_FILTER", "1") != "0"
+cat(sprintf("*** independent filtering: %s ***\n", INDEP_FILTER))
+bh_padj <- function(pv, bm) {
+  if (!INDEP_FILTER) return(p.adjust(pv, method = "BH"))
+  bm[is.na(bm)] <- 0
+  adjust_pvalues(data.frame(pvalue = pv, baseMean = bm), independentFiltering = TRUE,
+                 alpha = 0.01, method = "BH")$padj
+}
+grase_padj <- function(pv, gene, padj_gene, src, bm)
+  if (PADJ_METHOD == "BH") bh_padj(pv, bm) else two_stage(pv, gene, padj_gene, src)
+gr$padj2 <- grase_padj(gr$p.value, gr$gene, gr$padj_gene, gr$src, gr$baseMean)
 grok <- grase_ok(gr)
 st <- gr$padj2
 st[is.na(st)] <- 1                    # no statistic: a CALL condition, not a gap
@@ -333,7 +349,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
   mg$txs <- ifelse(grepl("diff1", mg$comparison), mg$transcripts1, mg$transcripts2)
   mg$uid <- paste(mg$src, mg$gene, mg$event, mg$comparison, sep = "|")
   mg$imp <- lapply(mg$txs, parse_l, sep = ",")
-  mg$padj2 <- grase_padj(mg$p.value, mg$gene, mg$padj_gene, mg$src)
+  mg$padj2 <- grase_padj(mg$p.value, mg$gene, mg$padj_gene, mg$src, mg$baseMean)
   mok <- grase_ok(mg)
   mst <- mg$padj2; mst[is.na(mst)] <- 1; mst[!mok] <- 1
   calls$GrASE_merged_all <- list(
@@ -810,6 +826,9 @@ print(as.data.frame(tab %>% filter((grepl("^GrASE|^DEXSeq|^rMATS", tool) & thr =
 ## Plots: one file per category; 2 rows (restricted/full) x 3 cols (levels)
 ## ===========================================================================
 LEVELS <- c("unit","transcript_strict","transcript_tolerant","gene")
+## MAIN_TOOLS, COL_MAIN, plab_main: the main-text set (the |effect_size| sweep);
+## COL and disp() below are redefined here as before and draw the supplementary set.
+source(file.path(BASE, "scripts/plot_palette.R"))
 
 ## --- plot styling + tool selection ------------------------------------------
 ## Effect size is shown by SHADE (darker = stronger threshold); all lines solid:
@@ -862,9 +881,13 @@ disp <- function(x) {
   sub("^GrASE_merged_", "GrASE_", sub("^GrASE_merged_all$", "GrASE_dpi0", x))
 }
 
+## Two versions of each PR figure: main (the GrASE |effect_size| sweep, no nested
+## BH or delta_pi curves) and supp (every curve, as before), written as *.supp.pdf.
+SETS <- list(main = list(tools = MAIN_TOOLS, col = COL_MAIN, lab = plab_main, suf = ""),
+             supp = list(tools = PLOT_TOOLS, col = COL, lab = disp, suf = ".supp"))
 for (categ in c("ALL", "DTE", "DTU", "Background", "DGE")) {
-if (!(categ %in% c("Background","DGE"))) {   # PR curves need positives
-fn <- if (categ == "ALL") "plots/pr_three_levels.GT_rule.pdf" else sprintf("plots/pr_three_levels.GT_rule_%s.pdf", categ)
+if (!(categ %in% c("Background","DGE"))) for (S in SETS) {   # PR curves need positives
+fn <- sprintf("plots/pr_three_levels.GT_rule%s%s.pdf", if (categ == "ALL") "" else paste0("_", categ), S$suf)
 ## 1900x1000 px at res 130 was 14.6 x 7.7 inches, kept exactly.
 pdf(file.path(BASE, fn), width = 14.6, height = 7.7)
 par(mfrow = c(2,4), mar = c(4.2,4.2,3,1), oma = c(3.1,0,1.6,0))
@@ -886,7 +909,7 @@ lvlab <- function(x) ifelse(is.na(LVLAB[x]), cap(x), LVLAB[x])
 for (uni in c("restricted","full")) {
   for (lv in LEVELS) {
     d <- tab[tab$level == lv & tab$universe == uni & tab$category == categ, ]
-    d <- d[d$tool %in% PLOT_TOOLS, ]                     # user-selected tools only
+    d <- d[d$tool %in% S$tools, ]                        # this figure's tools only
     ## Curves start at the standard operating point and loosen from there.
     ## Curves start at padj 0.001. The padj 1e-4 point is trimmed (it is not an
     ## operating point anyone reports, and on the null-space FPR view DEXSeq
@@ -912,16 +935,16 @@ for (uni in c("restricted","full")) {
     abline(0,1,col="grey80",lty=3)
     for (tl in unique(d$tool)) {
       dd <- d[d$tool == tl, ]; dd <- dd[order(dd$recall), ]
-      lines(dd$recall, dd$precision, col=COL[tl], lty=LTY[tl], lwd=2)
-      points(dd$recall, dd$precision, col=COL[tl], pch=16, cex=0.8)
+      lines(dd$recall, dd$precision, col=S$col[tl], lty=1, lwd=2)
+      points(dd$recall, dd$precision, col=S$col[tl], pch=16, cex=0.8)
     }
     if (lv == "unit" && uni == "restricted") {          # unit legend: GrASE variants only
-      gk <- intersect(grep("^GrASE", names(COL), value = TRUE), PLOT_TOOLS)
-      legend("bottomleft", legend=disp(gk), col=COL[gk], lty=LTY[gk], lwd=2, bty="n", cex=0.7)
+      gk <- grep("^GrASE", intersect(S$tools, names(S$col)), value = TRUE)
+      legend("bottomleft", legend=S$lab(gk), col=S$col[gk], lwd=2, bty="n", cex=0.7)
     }
     if (lv == "transcript_strict" && uni == "restricted") {  # cross-tool legend on a fair panel
-      lk <- intersect(names(COL), PLOT_TOOLS)
-      legend("bottomleft", legend=disp(lk), col=COL[lk], lty=LTY[lk], lwd=2, bty="n", cex=0.7)
+      lk <- intersect(S$tools, names(S$col))
+      legend("bottomleft", legend=S$lab(lk), col=S$col[lk], lwd=2, bty="n", cex=0.7)
     }
   }
 }

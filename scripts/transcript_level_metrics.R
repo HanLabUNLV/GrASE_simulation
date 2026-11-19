@@ -205,8 +205,19 @@ two_stage <- function(pv, gene, padj_gene, src) {
 PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
 stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
 cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
-grase_padj <- function(pv, gene, padj_gene, src)
-  if (PADJ_METHOD == "BH") p.adjust(pv, method = "BH") else two_stage(pv, gene, padj_gene, src)
+## INDEP_FILTER: plain BH runs with independent filtering on baseMean, as exontest.R
+## does by default, on top of the read floor (INDEP_FILTER=0 turns it off). The
+## filter is chosen at padj 0.01.
+INDEP_FILTER <- Sys.getenv("INDEP_FILTER", "1") != "0"
+cat(sprintf("*** independent filtering: %s ***\n", INDEP_FILTER))
+bh_padj <- function(pv, bm) {
+  if (!INDEP_FILTER) return(p.adjust(pv, method = "BH"))
+  bm[is.na(bm)] <- 0
+  adjust_pvalues(data.frame(pvalue = pv, baseMean = bm), independentFiltering = TRUE,
+                 alpha = 0.01, method = "BH")$padj
+}
+grase_padj <- function(pv, gene, padj_gene, src, bm)
+  if (PADJ_METHOD == "BH") bh_padj(pv, bm) else two_stage(pv, gene, padj_gene, src)
 
 ## SJAWARE=1 applies the same dpi gate as pr_curves_three_levels_gtrule.R: a side
 ## whose distinct set is empty in the test output (junction-sourced in the merged
@@ -223,16 +234,21 @@ MIN_DPI_SJ <- 0.05
 ## The base rows (dp 0, eff 0) have neither gate. The per-base column comes from
 ## Rpkg/scripts/add_perbase_calls.R, run on the result files.
 MIN_READS <- 10
-## exontest.R defaults (--min_dpi 0.05 --min_dpi_sj 0.05 --min_effect 0.5)
-DEF_DPI <- 0.05; DEF_EFF <- 0.5
+## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.5): effect-size gate only
+DEF_DPI <- 0; DEF_EFF <- 0.5
 grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
   is_significant(d, 0.01, 0, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
                  use_perbase = "both", min_effect = eff)
-GR_COLS <- c("gene", "comparison", "padj", "padj_gene", "p.value", "lfc_diff_net", "delta_pi",
+GR_COLS <- c("gene", "comparison", "padj", "padj_gene", "p.value", "baseMean", "lfc_diff_net", "delta_pi",
              "delta_pi_perbase", "effect_size", "d_support", "setdiff1", "setdiff2", "transcripts1", "transcripts2")
 read_gr <- function(f) {
   x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
+  ## padj_gene is the nested-BH gene screen (BH over genes of the Simes p); exontest.R
+  ## writes it only under --padj_method nested_BH, so a plain-BH run lacks it.
+  ## Rebuilt from the file's own p-values (one class, one contrast per file).
+  if (!"padj_gene" %in% names(x))
+    x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
   x[, intersect(GR_COLS, names(x))]
 }
 
@@ -245,7 +261,7 @@ g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header 
 g <- bind_rows(lapply(grase_src, read_gr))
 g$src <- rep(names(grase_src), times = g_n)
 ## base call condition: padj below 0.01, AND the is_significant() gates
-g$padj2 <- grase_padj(g$p.value, g$gene, g$padj_gene, g$src)
+g$padj2 <- grase_padj(g$p.value, g$gene, g$padj_gene, g$src, g$baseMean)
 g <- g[grase_ok(g), ]
 g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
 g$sim_type <- get_st(g$gene)
@@ -271,7 +287,7 @@ if (all(file.exists(file.path(BASE, str_src)))) {
         sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
   sg <- bind_rows(lapply(str_src, read_gr))
   sg$src <- rep(names(str_src), times = sn)
-  sg$padj2 <- grase_padj(sg$p.value, sg$gene, sg$padj_gene, sg$src)
+  sg$padj2 <- grase_padj(sg$p.value, sg$gene, sg$padj_gene, sg$src, sg$baseMean)
   sg <- sg[grase_ok(sg), ]
   sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
   sg$sim_type <- get_st(sg$gene)
@@ -327,7 +343,7 @@ add_imp <- function(d) {
   d
 }
 grase_calls <- function(d) {
-  d$padj2 <- grase_padj(d$p.value, d$gene, d$padj_gene, d$src)
+  d$padj2 <- grase_padj(d$p.value, d$gene, d$padj_gene, d$src, d$baseMean)
   add_imp(d[grase_ok(d), ])
 }
 mg_int <- read_merged(merged_src[["internal"]])

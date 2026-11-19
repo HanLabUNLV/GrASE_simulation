@@ -44,13 +44,23 @@ PADJ   <- 0.01
 PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
 stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
 cat(sprintf("*** GrASE padj: %s ***\n", PADJ_METHOD))
+## INDEP_FILTER: plain BH runs with independent filtering on baseMean, as exontest.R
+## does by default, on top of the read floor (INDEP_FILTER=0 turns it off). The
+## filter is chosen at padj 0.01.
+INDEP_FILTER <- Sys.getenv("INDEP_FILTER", "1") != "0"
+cat(sprintf("*** independent filtering: %s ***\n", INDEP_FILTER))
+bh_padj <- function(pv, bm) {
+  if (!INDEP_FILTER) return(p.adjust(pv, method = "BH"))
+  bm[is.na(bm)] <- 0
+  adjust_pvalues(data.frame(pvalue = pv, baseMean = bm), independentFiltering = TRUE,
+                 alpha = 0.01, method = "BH")$padj
+}
 ## GATES: "default" (default) adds exontest.R's other call conditions to every row:
-## |delta_pi| >= 0.05 on both scales (0.05 for junction-sourced sides too),
-## |effect_size| >= 0.5, d_support >= 10. "none" drops them, leaving padj and the
+## |effect_size| >= 0.5 (no delta_pi gate), d_support >= 10. "none" drops them, leaving padj and the
 ## swept lfc_diff_net threshold.
 GATES <- Sys.getenv("GATES", "default")
 stopifnot(GATES %in% c("default", "none"))
-DEF_DPI <- 0.05; DEF_EFF <- 0.5; MIN_READS <- 10
+DEF_DPI <- 0; DEF_EFF <- 0.5; MIN_READS <- 10
 cat(sprintf("*** call gates: %s ***\n", GATES))
 
 ## Two-stage rule, identical to the tool sweep (pr_curves_three_levels_gtrule.R):
@@ -110,13 +120,17 @@ for (nm in names(MODELS)) {
   if (!all(file.exists(fs))) { cat(sprintf("  %-9s missing an arm, skipping\n", nm)); next }
   n  <- vapply(fs, function(f) nrow(read.table(f, header=TRUE, sep="\t", quote="",
                comment.char="", stringsAsFactors=FALSE)), integer(1))
-  d  <- bind_rows(lapply(fs, function(f) read.table(f, header=TRUE, sep="\t", quote="",
-        comment.char="", stringsAsFactors=FALSE)[, c("gene","event","comparison",
-        "padj","padj_gene","p.value","lfc_diff_net","delta_pi","delta_pi_perbase",
-        "effect_size","d_support","setdiff1","setdiff2")]))
+  d  <- bind_rows(lapply(fs, function(f) {
+    x <- read.table(f, header=TRUE, sep="\t", quote="", comment.char="", stringsAsFactors=FALSE)
+    ## padj_gene: the nested-BH gene screen, absent from plain-BH runs; rebuilt per file
+    if (!"padj_gene" %in% names(x))
+      x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
+    x[, c("gene","event","comparison","padj","padj_gene","p.value","baseMean","lfc_diff_net","delta_pi",
+          "delta_pi_perbase","effect_size","d_support","setdiff1","setdiff2")]
+  }))
   d$src <- rep(c("internal","TSSTTS"), times = n)
   d$uid <- paste(d$src, d$gene, d$event, d$comparison, sep = "|")
-  d$stat <- if (PADJ_METHOD == "BH") p.adjust(d$p.value, method = "BH") else
+  d$stat <- if (PADJ_METHOD == "BH") bh_padj(d$p.value, d$baseMean) else
     two_stage(d$p.value, d$gene, d$padj_gene, d$src)
   ## Testability must be recorded BEFORE stat is coerced to 1: a unit whose
   ## p-value is NA (read floor, independent filtering) is a non-call, not a

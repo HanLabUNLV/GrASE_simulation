@@ -55,7 +55,16 @@ fi
 export SJAWARE=1
 echo "=== lane: $LANE  (STRANDED=${STRANDED:-unset} SJAWARE=${SJAWARE:-unset}) ==="
 
-while pgrep -f "exec/R.*[e]xontest" > /dev/null; do sleep 60; done
+# wait for exontest runs of THIS tree only (working directory here); an
+# exontest elsewhere on the machine (DICE) must not block the evaluation
+sim_exontest () {
+  local p
+  for p in $(pgrep -f "exec/R.*[e]xontest"); do
+    [ "$(readlink /proc/$p/cwd 2>/dev/null)" = "$PWD" ] && return 0
+  done
+  return 1
+}
+while sim_exontest; do sleep 60; done
 
 # 1. Count source per event, from the merged COUNTS of this lane. It does not
 #    depend on p-values, so a re-run that changed only the tests does not
