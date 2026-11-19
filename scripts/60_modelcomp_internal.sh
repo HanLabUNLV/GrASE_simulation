@@ -54,7 +54,7 @@ run () {   # run <model> [extra args]
   echo "  -> $(ls -la $OUT/test_bipartition.merged_${m}.txt 2>/dev/null | awk '{print $5}') bytes"
 }
 
-run betabinom_EBmap --phi phi.merged.stranded.txt --use_phi_loess --independent_filtering --padj_threshold=0.01
+run betabinom_EBmap --phi phi.merged.stranded.txt --use_phi_loess --padj_threshold=0.01
 run betabinom_MLE
 run wilcoxon
 echo "=== done ==="

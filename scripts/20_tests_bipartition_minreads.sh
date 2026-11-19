@@ -45,7 +45,7 @@ run_arm () {
     --model betabinom_EBapprox \
     --phi $phi \
     --cond1 group1 --cond2 group2 \
-    --use_phi_loess --independent_filtering --padj_threshold=0.01 \
+    --use_phi_loess --padj_threshold=0.01 \
     --min_reads 10 --gff_dir $GFF --read_length 100 &> $log
   echo "--- support filter lines:"
   grep -c "Support filter" $log || true

@@ -84,10 +84,10 @@ run_test () {   # class countdir outdir phibase annotdir
   # combine_exoncnt.py aligns columns by NAME: per-gene merged files do not all
   # share one column order, and a positional concatenation corrupts the master.
   [ -s "$CD/$CF" ] || python3 $R/combine_exoncnt.py "$CD" "$CD/$CF"
-  for f in $AD/*.bipartition.txt; do ln -sf "$(realpath "$f")" "$CD/$(basename "$f")"; done
+  for f in $AD/*.bipartition.txt; do ln -sfr "$(realpath "$f")" "$CD/$(basename "$f")"; done
   Rscript $R/exontest.R --file "$CF" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
-      --cond1 group1 --cond2 group2 --use_phi_loess --independent_filtering --padj_threshold=0.01 \
+      --cond1 group1 --cond2 group2 --use_phi_loess --padj_threshold=0.01 \
       --min_reads 10 --gff_dir $GFF --read_length 100
   for f in $OD/test_bipartition.exsj.${T}_*; do
     ln -sf "$(basename "$f")" "$OD/$(basename "$f" | sed "s/^test_bipartition\.exsj\.${T}_/test_bipartition.merged_/")"
