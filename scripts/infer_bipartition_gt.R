@@ -35,7 +35,8 @@
 #
 # `a` -- the per-junction analogue of bin length -- is the number of fragment
 # positions that yield a split read across a junction, L - 2*overhang + 1.
-# Default 91 (100 nt mates, STAR alignSJoverhangMin 5); --a overrides it.
+# Default 89 (100 nt mates, STAR alignSJDBoverhangMin 6, the overhang for annotated
+# junctions, matching exontest.R --sj_overhang 6); --a overrides it.
 # The BINARY label does not depend on `a`: mass-changed is |a*(X2-X1)| > 0 and a>0
 # cancels; pi_2 == pi_1 <=> yD1*yS2 == yD2*yS1, where a cancels. Only the reported
 # magnitude true_dpi is on the `a` scale, and that is a stratification covariate.
@@ -73,8 +74,8 @@ suppressPackageStartupMessages({library(dplyr); library(parallel); library(optpa
 opt <- parse_args(OptionParser(option_list = list(
   make_option("--merged", action = "store_true", default = FALSE,
               help = "score the MERGED exon+SJ unit: junction-sourced sides get a junction numerator instead of being dropped [default: exonic unit]"),
-  make_option("--a",     type = "double",  default = 91,
-              help = "fragment positions per junction, the analogue of bin length; --merged only [default 91]"),
+  make_option("--a",     type = "double",  default = 89,
+              help = "fragment positions per junction, the analogue of bin length; --merged only [default 89]"),
   make_option("--cores", type = "integer", default = 16))))
 MERGED <- isTRUE(opt$merged)
 A_JUNC <- opt$a
