@@ -32,7 +32,7 @@ done
 
 for a in internal TSSTTS; do
   echo "=== multinomial $a  $(date +%H:%M:%S) ==="
-  Rscript $S/exontest.R \
+  Rscript $S/exontest.R --padj_threshold=0.01 \
     --file=multinomial.${a}.exoncnt.combined.txt \
     --countdir=multinomial.${a}.stranded.counts/ \
     --outdir=multinomial.stranded.test.EBplugin \
