@@ -8,7 +8,7 @@
 #
 # Conventions:
 #   GrASE       reds, darkening with the delta_pi gate (dpi0 -> dpi0.2)
-#   GrASE_eff   pinks, darkening with the |effect_size| gate (eff0.5 -> eff1.0)
+#   GrASE_eff   pinks, darkening with the |effect_size| gate (eff0.3 -> eff1.0)
 #   GrASE_merged_default  black -- exontest.R's default call rule (both gates)
 #   GrASE_nestedBH  yellow-orange -- a GrASE variant, but an FDR-architecture change
 #               (nested BH; the other GrASE entries use plain BH) rather than an
@@ -24,6 +24,8 @@ COL <- c("GrASE_merged_default" = "#000000",
          "GrASE_merged_dpi0.1" = "#de2d26",
          "GrASE_dpi0.2"        = "#a50f15",
          "GrASE_merged_dpi0.2" = "#a50f15",
+         "GrASE_merged_eff0.3" = "#fcc5c0",
+         "GrASE_merged_eff0.4" = "#fa9fb5",
          "GrASE_merged_eff0.5" = "#f768a1",
          "GrASE_merged_eff1.0" = "#ae017e",
          "GrASE_internal"        = "#67000d",
@@ -48,14 +50,16 @@ plab <- function(x) ifelse(x == "GrASE_nestedBH", "GrASE (nested BH)",
 
 # Main-text figures show GrASE as one |effect_size| sweep on plain BH; the nested
 # BH and delta_pi curves go to the supplementary copy (*.supp.pdf). The sweep is
-# eff0 (no effect-size gate) -> eff0.5 (exontest.R's default) -> eff1.0, on a
+# eff0 (no effect-size gate) -> eff0.3 -> eff0.4 -> eff0.5 (exontest.R's default) -> eff1.0, on a
 # red ramp that darkens with the gate. GrASE_merged_eff0.5 is the same call set
 # as GrASE_merged_default and is not drawn twice.
-MAIN_TOOLS <- c("GrASE_merged_all", "GrASE_merged_default", "GrASE_merged_eff1.0",
+MAIN_TOOLS <- c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_eff0.4",
+                "GrASE_merged_default", "GrASE_merged_eff1.0",
                 "DEXSeq", "MAJIQ_C0.10", "MAJIQ_C0.20",
                 "rMATS", "rMATS_dpsi0.1", "rMATS_dpsi0.2")
 COL_MAIN <- COL
-COL_MAIN[c("GrASE_merged_all", "GrASE_merged_default", "GrASE_merged_eff1.0")] <-
-  c("#fc9272", "#de2d26", "#67000d")
+COL_MAIN[c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_eff0.4",
+           "GrASE_merged_default", "GrASE_merged_eff1.0")] <-
+  c("#fcbba1", "#fc9272", "#fb6a4a", "#de2d26", "#67000d")
 plab_main <- function(x) ifelse(x == "GrASE_merged_all", "GrASE_eff0",
                           ifelse(x == "GrASE_merged_default", "GrASE_eff0.5 (default)", plab(x)))

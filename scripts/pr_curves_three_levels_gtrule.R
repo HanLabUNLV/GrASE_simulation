@@ -372,7 +372,7 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
                 dp, sum(mk), nrow(mg)))
   }
   ## |effect_size| (log odds ratio) variants, delta_pi gate off; call-side as above
-  for (ef in c(0.5, 1)) {
+  for (ef in c(0.3, 0.4, 0.5, 1)) {
     mk <- grase_ok(mg, eff = ef)
     mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
     calls[[sprintf("GrASE_merged_eff%.1f", ef)]] <- list(
@@ -604,6 +604,8 @@ GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_all = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.1" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.2" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              "GrASE_merged_eff0.3" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+              "GrASE_merged_eff0.4" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_eff0.5" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_eff1.0" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
@@ -848,6 +850,7 @@ COL <- c("GrASE_merged_default"="#000000", "GrASE_nestedBH"="#fec44f",
          GrASE="#fb6a4a", "GrASE_merged_all"="#fb6a4a",
          "GrASE_dpi0.1"="#de2d26", "GrASE_merged_dpi0.1"="#de2d26",
          "GrASE_dpi0.2"="#a50f15", "GrASE_merged_dpi0.2"="#a50f15",
+         "GrASE_merged_eff0.3"="#fcc5c0", "GrASE_merged_eff0.4"="#fa9fb5",
          "GrASE_merged_eff0.5"="#f768a1", "GrASE_merged_eff1.0"="#ae017e",
          "GrASE_internal"="#67000d", "GrASE_merged_internal"="#67000d",
          DEXSeq="#3182bd",
