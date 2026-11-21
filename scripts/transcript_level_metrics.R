@@ -234,8 +234,8 @@ MIN_DPI_SJ <- 0.05
 ## The base rows (dp 0, eff 0) have neither gate. The per-base column comes from
 ## Rpkg/scripts/add_perbase_calls.R, run on the result files.
 MIN_READS <- 10
-## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.5): effect-size gate only
-DEF_DPI <- 0; DEF_EFF <- 0.5
+## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.4): effect-size gate only
+DEF_DPI <- 0; DEF_EFF <- 0.4
 grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
   is_significant(d, 0.01, 0, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
                  use_perbase = "both", min_effect = eff)
@@ -393,8 +393,7 @@ if (all(file.exists(file.path(BASE, mstr)))) {
     grase_tab <- bind_rows(grase_tab,
       score_tool(mk[, KEEP], sprintf("GrASE_merged_stranded_eff%.1f", ef)))
   }
-  ## exontest.R's default call rule: |delta_pi| >= 0.05 on both scales (0.05 for
-  ## junction-sourced sides too) AND |effect_size| >= 0.5
+  ## exontest.R's default call rule: |effect_size| >= 0.4, no delta_pi gate
   msd <- ms[grase_ok(ms, DEF_DPI, DEF_EFF), ]
   grase_tab <- bind_rows(grase_tab, score_tool(msd[, KEEP], "GrASE_merged_stranded_default"))
   ## internal-only merged+stranded: the strict like-for-like against a junction

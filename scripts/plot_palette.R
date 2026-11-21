@@ -50,16 +50,16 @@ plab <- function(x) ifelse(x == "GrASE_nestedBH", "GrASE (nested BH)",
 
 # Main-text figures show GrASE as one |effect_size| sweep on plain BH; the nested
 # BH and delta_pi curves go to the supplementary copy (*.supp.pdf). The sweep is
-# eff0 (no effect-size gate) -> eff0.3 -> eff0.4 -> eff0.5 (exontest.R's default) -> eff1.0, on a
-# red ramp that darkens with the gate. GrASE_merged_eff0.5 is the same call set
+# eff0 (no effect-size gate) -> eff0.3 -> eff0.4 (exontest.R's default) -> eff0.5 -> eff1.0, on a
+# red ramp that darkens with the gate. GrASE_merged_eff0.4 is the same call set
 # as GrASE_merged_default and is not drawn twice.
-MAIN_TOOLS <- c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_eff0.4",
-                "GrASE_merged_default", "GrASE_merged_eff1.0",
+MAIN_TOOLS <- c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_default",
+                "GrASE_merged_eff0.5", "GrASE_merged_eff1.0",
                 "DEXSeq", "MAJIQ_C0.10", "MAJIQ_C0.20",
                 "rMATS", "rMATS_dpsi0.1", "rMATS_dpsi0.2")
 COL_MAIN <- COL
-COL_MAIN[c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_eff0.4",
-           "GrASE_merged_default", "GrASE_merged_eff1.0")] <-
+COL_MAIN[c("GrASE_merged_all", "GrASE_merged_eff0.3", "GrASE_merged_default",
+           "GrASE_merged_eff0.5", "GrASE_merged_eff1.0")] <-
   c("#fcbba1", "#fc9272", "#fb6a4a", "#de2d26", "#67000d")
 plab_main <- function(x) ifelse(x == "GrASE_merged_all", "GrASE_eff0",
-                          ifelse(x == "GrASE_merged_default", "GrASE_eff0.5 (default)", plab(x)))
+                          ifelse(x == "GrASE_merged_default", "GrASE_eff0.4 (default)", plab(x)))

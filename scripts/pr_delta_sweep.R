@@ -56,11 +56,11 @@ bh_padj <- function(pv, bm) {
                  alpha = 0.01, method = "BH")$padj
 }
 ## GATES: "default" (default) adds exontest.R's other call conditions to every row:
-## |effect_size| >= 0.5 (no delta_pi gate), d_support >= 10. "none" drops them, leaving padj and the
+## |effect_size| >= 0.4 (no delta_pi gate), d_support >= 10. "none" drops them, leaving padj and the
 ## swept lfc_diff_net threshold.
 GATES <- Sys.getenv("GATES", "default")
 stopifnot(GATES %in% c("default", "none"))
-DEF_DPI <- 0; DEF_EFF <- 0.5; MIN_READS <- 10
+DEF_DPI <- 0; DEF_EFF <- 0.4; MIN_READS <- 10
 cat(sprintf("*** call gates: %s ***\n", GATES))
 
 ## Two-stage rule, identical to the tool sweep (pr_curves_three_levels_gtrule.R):

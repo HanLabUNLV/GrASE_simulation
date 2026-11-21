@@ -238,8 +238,8 @@ if (SJAWARE) cat(sprintf("*** source-aware dpi gate: sj sides use %.2f ***\n", M
 ## junction-sourced side's dpi cutoff is min(dp, MIN_DPI_SJ). The per-base column comes from
 ## Rpkg/scripts/add_perbase_calls.R, run on the result files.
 MIN_READS <- 10
-## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.5): effect-size gate only
-DEF_DPI <- 0; DEF_EFF <- 0.5
+## exontest.R defaults (--min_dpi 0 --min_dpi_sj 0 --min_effect 0.4): effect-size gate only
+DEF_DPI <- 0; DEF_EFF <- 0.4
 grase_ok <- function(d, dp = 0, eff = 0, padj = d$padj2)
   is_significant(d, Inf, DELTA, dp, if (SJAWARE) min(dp, MIN_DPI_SJ) else dp, MIN_READS, padj = padj,
                  use_perbase = "both", min_effect = eff)
@@ -381,8 +381,8 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
     cat(sprintf("  GrASE_merged_eff%.1f: %d of %d tests callable (universe unchanged)\n",
                 ef, sum(mk), nrow(mg)))
   }
-  ## exontest.R's default call rule on the same padj: |delta_pi| >= 0.05 on both
-  ## scales (0.05 for junction-sourced sides too) AND |effect_size| >= 0.5.
+  ## exontest.R's default call rule on the same padj: |effect_size| >= 0.4, no
+  ## delta_pi gate.
   ## Call-side, universe unchanged, as for the single-gate variants above.
   mk <- grase_ok(mg, DEF_DPI, DEF_EFF)
   mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1

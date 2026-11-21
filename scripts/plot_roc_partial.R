@@ -48,7 +48,7 @@ SUPP_TOOLS <- c("GrASE_merged_default","GrASE_nestedBH","GrASE_merged_all","GrAS
 # Two versions of every figure: main (the GrASE |effect_size| sweep on plain BH)
 # and supp (adds nested BH and the delta_pi curves), written as *.supp.pdf.
 NOTE_SUPP <- "GrASE curves use the merged exon+SJ unit with plain BH, matching DEXSeq's FDR architecture; GrASE (nested BH) is exontest.R's two-stage nested BH on the same raw p-values"
-NOTE_MAIN <- "GrASE curves use the merged exon+SJ unit with plain BH, matching DEXSeq's FDR architecture, swept over the |effect_size| gate (0, 0.3, 0.4, 0.5 = default, 1.0)"
+NOTE_MAIN <- "GrASE curves use the merged exon+SJ unit with plain BH, matching DEXSeq's FDR architecture, swept over the |effect_size| gate (0, 0.3, 0.4 = default, 0.5, 1.0)"
 SETS <- list(main = list(tools = MAIN_TOOLS, col = COL_MAIN, lab = plab_main, suf = "", note = NOTE_MAIN),
              supp = list(tools = SUPP_TOOLS, col = COL, lab = plab, suf = ".supp", note = NOTE_SUPP))
 TOOLS <- MAIN_TOOLS
