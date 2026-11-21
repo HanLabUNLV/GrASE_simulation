@@ -88,7 +88,7 @@ run_test () {   # class countdir outdir phibase annotdir
   Rscript $R/exontest.R --file "$CF" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
       --cond1 group1 --cond2 group2 --use_phi_loess --padj_threshold=0.01 \
-      --min_reads 10 --gff_dir $GFF --read_length 100
+      --min_reads 10 --gff_dir $GFF --read_length 100 --count_per_part
   for f in $OD/test_bipartition.exsj.${T}_*; do
     ln -sf "$(basename "$f")" "$OD/$(basename "$f" | sed "s/^test_bipartition\.exsj\.${T}_/test_bipartition.merged_/")"
   done

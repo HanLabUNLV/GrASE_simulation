@@ -49,7 +49,7 @@ run () {   # run <model> [extra args]
     --file bipartition.merged.stranded.internal.exoncnt.combined.txt \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
-    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 "$@" \
+    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 6 "$@" \
     &> modelcomp.$m.log
   echo "  -> $(ls -la $OUT/test_bipartition.merged_${m}.txt 2>/dev/null | awk '{print $5}') bytes"
 }

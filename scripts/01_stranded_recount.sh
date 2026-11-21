@@ -1,7 +1,7 @@
 #!/bin/bash
 # Re-count DEXSeq bins with the strand recovered from each read's true origin.
 #
-# WHY: the library is unstranded (polyester default), yet DEXSeq/dexseq_count.sh
+# WHY: the library is unstranded (polyester default), yet the original count script
 # ran with --stranded reverse. On unstranded data that rule discards about half
 # of every bin's reads at random and does NOT stop an antisense neighbour's reads
 # landing in a gene's bins. Validation on chr2: the contaminated bins of
@@ -20,7 +20,7 @@ BASE=/mnt/data1/home/mirahan/GrASE_simulation
 cd $BASE
 NPAR=${1:-12}
 PY=$HOME/miniconda3/envs/smartSim/bin/python      # the env that has HTSeq
-DC=$HOME/GrASE/scripts/dexseq_count.py
+DC=$HOME/GrASE/Rpkg/inst/python/dexseq_count.py
 
 mkdir -p strand_recon/bam strand_recon/log
 [ -s ref/gencode.v28.dexseq.bygene.plus.gff ] || bash scripts/split_gff_by_strand.sh
@@ -29,7 +29,7 @@ work() {
   set -eu
   BASE=/mnt/data1/home/mirahan/GrASE_simulation
   PY=$HOME/miniconda3/envs/smartSim/bin/python
-  DC=$HOME/GrASE/scripts/dexseq_count.py
+  DC=$HOME/GrASE/Rpkg/inst/python/dexseq_count.py
   G=$1; S=$2; SN=$3                      # group, sample (out_N), sample_0N tag
   L=$BASE/strand_recon/log/${G}_${S}.log
   OUT=$BASE/DEXSeq/count_files_stranded/$G/${S}_counts.txt
