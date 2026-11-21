@@ -20,8 +20,10 @@
 # built from the ORIGINAL run's IDs -- that ground truth must be rebuilt
 # (scripts/infer_rmats_junctions_gt.R) before any unit-level rMATS row is quoted.
 #
-# Flags mirror the original run exactly (-t paired for prep, -t single for post,
-# --novelSS) so the only variable is the input reads. The prep/post -t mismatch
+# Flags mirror the original run (-t paired for prep, -t single for post) so the
+# only variable is the input reads. No --novelSS: the simulation has no novel
+# splice sites, and the original passed it only at post, where it has no effect
+# (rMATS finds novel splice sites in prep; that run reported none). The prep/post -t mismatch
 # is a known harmless inconsistency: rerunning post with -t paired gave
 # byte-identical output.
 #
@@ -54,7 +56,7 @@ for S in plus minus; do
   mkdir -p "$D/post"
   $PY $RM/rmats.py --b1 "$D/prep/group1.prep.txt" --b2 "$D/prep/group2.prep.txt" \
       --gtf "$G" -t single --readLength 100 --nthread 16 \
-      --od "$D/post/" --tmp "$D/tmp_post/" --task post --novelSS
+      --od "$D/post/" --tmp "$D/tmp_post/" --task post
 done
 
 echo "=== event counts per strand ==="

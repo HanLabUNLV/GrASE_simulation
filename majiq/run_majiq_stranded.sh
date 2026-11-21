@@ -19,6 +19,10 @@
 # strand gene. Two independent builds, concatenated at the TSV stage -- a gene
 # lives on exactly one strand, so LSV ids cannot collide.
 #
+# De novo junction discovery is off (--disable-denovo): the simulation has no
+# novel junctions, so any MAJIQ finds are alignment noise; rMATS likewise runs
+# without novel splice sites.
+#
 # Usage: bash majiq/run_majiq_stranded.sh
 set -euo pipefail
 BASE=$HOME/GrASE_simulation
@@ -57,7 +61,7 @@ INI
   BUILD=$BASE/majiq/build_$S
   if [ ! -s "$BUILD/splicegraph.sql" ]; then
     echo "[$S] build..."
-    conda run -n majiq2 majiq build "$G3" -c "$CONF" -j "$NPROC" -o "$BUILD"
+    conda run -n majiq2 majiq build "$G3" -c "$CONF" -j "$NPROC" -o "$BUILD" --disable-denovo
   fi
 
   DP=$BASE/majiq/deltapsi_$S
