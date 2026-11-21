@@ -132,11 +132,15 @@ scripts here only where the truth is known.
 |-------|--------|--------------|
 | 00 | `00_bipartition_v28_dedupfix.sh` | enumerate bipartitions from `graphml.v28` into `bipartition.v28.dedupfix`; also writes each gene's table before the dedup (`<gene>.bipartition.all.txt`) |
 | 01 | `01_stranded_recount.sh` | re-count the DEXSeq bins with each read's strand recovered from its source transcript, into `DEXSeq/count_files_stranded` (helpers: `build_read_strand.py`, `split_bam_by_origin.py`, `split_gff_by_strand.sh`) |
-| 02 | `02_stranded_pipeline.sh` | split into internal and terminal, split-read counts, stranded exonic counts, merge, and the merged exontest with the read floor; each output directory is first moved to `<dir>.olddedup` |
+| 00 | `00_bipartition_v28_features.sh` | bipartitions read off the paths' features (`bipartition_paths_by_feature`, run from the package source), with intron edges in the comparison of paths, into `bipartition.v28.features`; same partitions as the lower-set enumeration |
+| 02 | `02_stranded_pipeline.sh` | per-part route: split into internal and terminal, split-read counts, stranded exonic counts, merge, and the merged exontest (`--count_per_part`); each output directory is first moved to `<dir>.olddedup` |
+| 03 | `03_signature_counts.sh` | read-signature counts from the strand-split BAMs (`dexseq_count_sig.py`, same flags as 01), strands combined per sample into `counts_sig/raw` |
+| 04 | `04_signature_pipeline.sh` | signature route, the counterpart of 02 on `bipartition.v28.features`: split into internal and terminal, junction sets, each side counted once per read (`sigcnt.py`), and exontest with `--sj_overhang 6`; writes the directories 30, 60, 61 and the evaluation read, moving their earlier contents to `<dir>.before_signature` |
 | 10 | `10_counts_nc2_multinomial.sh` | exonic-part counts for the n_choose_2 and multinomial splits |
 | 21 | `21_tests_nc2_multinomial.sh` | exontest for n_choose_2 and multinomial |
 | 30 | `30_merge_downstream.sh` | everything downstream of the merged (exon + split-read) exontest: per-event count source (`extract_count_source.py` -> `results/gt/count_source.<class>[.stranded].txt`), ground truth, PR sweep, transcript-level metrics and gene-level tables |
 | 41 | `41_gt_junctions_stranded.sh` | junction-level structural ground truth, stranded rMATS runs |
+| 42 | `42_majiq_nodenovo.sh` | MAJIQ on the strand-split BAMs with `--disable-denovo` (`majiq/run_majiq_stranded.sh`), then its LSV ground truth (`make_lsv_junction_keys.R`, `infer_lsv_junction_gt.R`) |
 | 50 | `50_eval_nc2.sh` | evaluate the n_choose_2 results |
 | 51 | `51_eval_multinomial.sh` | evaluate the multinomial results |
 | 60 | `60_modelcomp_internal.sh` | model comparison, internal arm |
