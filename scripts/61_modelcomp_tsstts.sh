@@ -13,7 +13,7 @@
 # Order is wilcoxon -> MLE -> EBmap, cheapest first, so a failure surfaces early
 # rather than after the multi-hour run.
 #
-# Usage: bash scripts/61_modelcomp_tsstts.sh
+# Usage: [MC_CORES=24] bash scripts/61_modelcomp_tsstts.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts
@@ -22,12 +22,11 @@ SRC=bipartition.merged.TSSTTS.stranded.test.EBapprox
 OUT=bipartition.merged.TSSTTS.stranded.test.modelcomp
 mkdir -p $OUT
 
-# Same as the internal half: the EBapprox run tags its phi with the model name,
-# so copy it under the untagged name this script passes to --phi, and bring the
-# annotated EBapprox result along for eval_modelcomp.sh.
-cp -n "$SRC/phi.merged.TSSTTS.stranded.EBapprox.txt" \
+# Same as the internal half: copy the EBapprox run's phi under the name this
+# script passes to --phi, and bring the annotated EBapprox result along.
+cp -n "$SRC/phi.merged.TSSTTS.stranded.txt" \
       "$OUT/phi.merged.TSSTTS.stranded.txt"
-cp -n "$SRC/phi.merged.TSSTTS.stranded.EBapprox.approx.moderated.txt" \
+cp -n "$SRC/phi.merged.TSSTTS.stranded.approx.moderated.txt" \
       "$OUT/phi.merged.TSSTTS.stranded.approx.moderated.txt"
 for f in test_bipartition.merged_betabinom_EBapprox.txt \
          test_bipartition.merged_betabinom_EBapprox.annotated.txt; do
@@ -41,12 +40,16 @@ run () {
   local m=$1; shift
   echo "=== $m  $(date +%H:%M:%S) ==="
   Rscript $S/exontest.R \
-    --file bipartition.merged.stranded.TSSTTS.exoncnt.combined.txt \
+    --prefix bipartition.exsj.terminal \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
-    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 1 "$@" \
+    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 1 \
+    --mc_cores "${MC_CORES:-24}" "$@" \
     &> modelcomp.tss.$m.log
-  echo "  -> $(stat -c %s $OUT/test_bipartition.merged_${m}.txt 2>/dev/null || echo FAILED) bytes"
+  for f in $OUT/test_bipartition.exsj.terminal_$m*; do
+    ln -sf "$(basename "$f")" "$OUT/$(basename "$f" | sed "s/^test_bipartition\.exsj\.terminal_/test_bipartition.merged_/")"
+  done
+  echo "  -> $(stat -L -c %s $OUT/test_bipartition.merged_${m}.txt 2>/dev/null || echo FAILED) bytes"
 }
 
 run wilcoxon

@@ -27,7 +27,7 @@
 #            test_bipartition.merged_<model>.annotated.txt
 #   outputs: results/eval_metricfair/pr_models.GT_rule.txt
 #            plots/pr_models.GT_rule.png
-suppressMessages({library(dplyr)})
+suppressMessages({library(dplyr); library(grase)})
 
 BASE <- "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT  <- file.path(BASE, "results/eval_metricfair")
@@ -39,6 +39,19 @@ MODELS <- c(EBapprox = "betabinom_EBapprox", EBmap = "betabinom_EBmap",
 COL <- c(EBapprox="#1f78b4", EBmap="#33a02c", MLE="#e31a1c", wilcoxon="#6a3d9a")
 THR <- c(1e-4, 1e-3, 0.01, 0.05, 0.1, 0.2)
 DELTA <- 0
+## PADJ_METHOD: "BH" (default) is plain BH over both arms pooled, with independent
+## filtering on baseMean (INDEP_FILTER=0 turns it off), as in
+## pr_curves_three_levels_gtrule.R and pr_delta_sweep.R; "nested_BH" is two_stage() below.
+PADJ_METHOD <- Sys.getenv("PADJ_METHOD", "BH")
+stopifnot(PADJ_METHOD %in% c("BH", "nested_BH"))
+INDEP_FILTER <- Sys.getenv("INDEP_FILTER", "1") != "0"
+cat(sprintf("*** GrASE padj: %s, independent filtering: %s ***\n", PADJ_METHOD, INDEP_FILTER))
+bh_padj <- function(pv, bm) {
+  if (!INDEP_FILTER) return(p.adjust(pv, method = "BH"))
+  bm[is.na(bm)] <- 0
+  adjust_pvalues(data.frame(pvalue = pv, baseMean = bm), independentFiltering = TRUE,
+                 alpha = 0.01, method = "BH")$padj
+}
 
 ## Two-stage rule, identical to the tool sweep: within-gene BH RECOMPUTED from
 ## raw p-values, then max with the gene-level padj. Must not use the stored
@@ -85,12 +98,17 @@ for (nm in names(MODELS)) {
   if (!all(file.exists(fs))) { cat(sprintf("  %-9s missing an arm, skipping\n", nm)); next }
   n  <- vapply(fs, function(f) nrow(read.table(f, header=TRUE, sep="\t", quote="",
                comment.char="", stringsAsFactors=FALSE)), integer(1))
-  d  <- bind_rows(lapply(fs, function(f) read.table(f, header=TRUE, sep="\t", quote="",
-        comment.char="", stringsAsFactors=FALSE)[, c("gene","event","comparison",
-        "padj","padj_gene","p.value","lfc_diff_net")]))
+  d  <- bind_rows(lapply(fs, function(f) {
+    x <- read.table(f, header=TRUE, sep="\t", quote="", comment.char="", stringsAsFactors=FALSE)
+    ## padj_gene: the nested-BH gene screen, absent from plain-BH runs; rebuilt per file
+    if (!"padj_gene" %in% names(x))
+      x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
+    x[, c("gene","event","comparison","padj","padj_gene","p.value","baseMean","lfc_diff_net")]
+  }))
   d$src <- rep(c("internal","TSSTTS"), times = n)
   d$uid <- paste(d$src, d$gene, d$event, d$comparison, sep = "|")
-  d$stat <- two_stage(d$p.value, d$gene, d$padj_gene)
+  d$stat <- if (PADJ_METHOD == "BH") bh_padj(d$p.value, d$baseMean) else
+    two_stage(d$p.value, d$gene, d$padj_gene)
   ok <- !is.na(d$lfc_diff_net) & d$lfc_diff_net > DELTA
   d$stat[is.na(d$stat) | !ok] <- 1
   ## A unit absent from the GT table is a NEGATIVE, not a unit to drop -- this

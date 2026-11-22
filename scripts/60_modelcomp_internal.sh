@@ -15,7 +15,7 @@
 # the model, so the same sides are dropped from all four. Pass --min_reads 0 if
 # you want the low-support regime, where the models differ most.
 #
-# Usage: bash scripts/60_modelcomp_internal.sh
+# Usage: [MC_CORES=24] bash scripts/60_modelcomp_internal.sh
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts
@@ -25,13 +25,13 @@ OUT=bipartition.merged.stranded.test.modelcomp
 mkdir -p $OUT
 
 # phi estimated from these counts, plus the already-computed EBapprox result.
-# The EBapprox run tags its phi output with the model name, so the files are
-# copied under the untagged names this script passes to --phi. Both EBapprox and
-# EBmap then read the SAME phi -- a per-model phi would confound the model
+# The phi files are copied from the EBapprox run (04_signature_pipeline.sh) under
+# the names this script passes to --phi. Both EBapprox and EBmap then read the
+# SAME phi -- a per-model phi would confound the model
 # comparison with the dispersion estimate.
-cp -n "$SRC/phi.merged.stranded.EBapprox.txt" \
+cp -n "$SRC/phi.merged.stranded.txt" \
       "$OUT/phi.merged.stranded.txt"
-cp -n "$SRC/phi.merged.stranded.EBapprox.approx.moderated.txt" \
+cp -n "$SRC/phi.merged.stranded.approx.moderated.txt" \
       "$OUT/phi.merged.stranded.approx.moderated.txt"
 # EBapprox itself is not refit; eval_modelcomp.sh reads the annotated form.
 for f in test_bipartition.merged_betabinom_EBapprox.txt \
@@ -46,12 +46,16 @@ run () {   # run <model> [extra args]
   local m=$1; shift
   echo "=== $m ==="
   Rscript $S/exontest.R \
-    --file bipartition.merged.stranded.internal.exoncnt.combined.txt \
+    --prefix bipartition.exsj.internal \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
-    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 1 "$@" \
+    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 1 \
+    --mc_cores "${MC_CORES:-24}" "$@" \
     &> modelcomp.$m.log
-  echo "  -> $(ls -la $OUT/test_bipartition.merged_${m}.txt 2>/dev/null | awk '{print $5}') bytes"
+  for f in $OUT/test_bipartition.exsj.internal_$m*; do
+    ln -sf "$(basename "$f")" "$OUT/$(basename "$f" | sed "s/^test_bipartition\.exsj\.internal_/test_bipartition.merged_/")"
+  done
+  echo "  -> $(stat -L -c %s $OUT/test_bipartition.merged_${m}.txt 2>/dev/null || echo FAILED) bytes"
 }
 
 run betabinom_EBmap --phi phi.merged.stranded.txt --use_phi_loess --padj_threshold=0.01
