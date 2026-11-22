@@ -67,10 +67,8 @@ done
 echo "=== 3. tests (phi estimated fresh from these counts)  $(date '+%F %T') ==="
 run_test () {   # class countdir outdir phibase
   local T=$1 CD=$2 OD=$3 PB=$4
-  local CF=bipartition.exsj.$T.cnt.combined.txt
   backup "$OD"; mkdir -p "$OD"
-  python3 $R/combine_exoncnt.py "$CD" "$CD/$CF"
-  Rscript $R/exontest.R --file "$CF" --countdir "$CD" --outdir "$OD" \
+  Rscript $R/exontest.R --prefix "bipartition.exsj.$T" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
       --cond1 group1 --cond2 group2 --use_phi_loess --padj_threshold=0.01 \
       --min_reads 10 --gff_dir $GFF --read_length 100 --sj_overhang 6 &> "$OD/test.log"
