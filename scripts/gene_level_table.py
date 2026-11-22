@@ -36,17 +36,14 @@ BASE = "/mnt/data1/home/mirahan/GrASE_simulation"
 OUT = os.path.join(BASE, "results/eval_metricfair")
 SWEEP = os.path.join(OUT, "pr_three_levels.GT_rule.txt")
 
-THR = {"GrASE": "0.01", "GrASE_merged_all": "0.01",
+THR = {"GrASE_merged_all": "0.01",
        "GrASE_merged_dpi0.1": "0.01", "GrASE_merged_dpi0.2": "0.01",
        "GrASE_merged_internal": "0.01",
-       "GrASE_dpi0.1": "0.01", "GrASE_dpi0.2": "0.01",
-       "GrASE_internal": "0.01", "MAJIQ_C0.10": "0.95", "MAJIQ_C0.20": "0.95",
+       "MAJIQ_C0.10": "0.95", "MAJIQ_C0.20": "0.95",
        "DEXSeq": "0.01", "rMATS": "0.01",
        "rMATS_dpsi0.1": "0.01", "rMATS_dpsi0.2": "0.01"}
-ORDER = ["GrASE", "GrASE_merged_all",
-         "GrASE_dpi0.1", "GrASE_merged_dpi0.1",
-         "GrASE_dpi0.2", "GrASE_merged_dpi0.2",
-         "GrASE_internal", "GrASE_merged_internal",
+ORDER = ["GrASE_merged_all", "GrASE_merged_dpi0.1", "GrASE_merged_dpi0.2",
+         "GrASE_merged_internal",
          "MAJIQ_C0.10", "MAJIQ_C0.20", "DEXSeq",
          "rMATS", "rMATS_dpsi0.1", "rMATS_dpsi0.2"]
 CATS = ["ALL", "DTE", "DTU", "Background", "DGE"]

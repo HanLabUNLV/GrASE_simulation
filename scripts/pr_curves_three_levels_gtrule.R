@@ -55,76 +55,33 @@ ep <- readRDS(file.path(OUT, "ep_gt_cache.rds"))
 ep$key <- paste(ep$gene, ep$exonic_part, sep = ":")
 pos_key <- new.env(); for (k in ep$key[ep$gt_pos]) assign(k, TRUE, envir = pos_key)
 neg_key <- new.env(); for (k in ep$key[ep$gt_neg]) assign(k, TRUE, envir = neg_key)
-## --- strand-reconstruction switch -------------------------------------------
-## STRANDED=1 scores every tool on the strand-corrected inputs: exonic counts
-## recounted with the read's true strand of origin (see stranded_reconstruction.md),
-## MAJIQ and rMATS rerun on the origin-split BAMs, DEXSeq rerun on the new bins.
-## Unset reproduces the original run exactly.
-STRANDED <- nzchar(Sys.getenv("STRANDED"))
-if (STRANDED) cat("*** STRANDED inputs ***\n")
-## rMATS renumbers its events from 0 in every run, so the stranded plus/minus
-## IDs collide with each other and with the original numbering that
-## results/sim_junction_gt.txt is keyed to. Event IDs are
-## strand-prefixed below to keep them unique, which means they no longer join to
-## that GT -- rMATS UNIT rows are therefore emitted as NA under STRANDED rather
-## than silently scored against stale truth. Transcript and gene levels are
-## unaffected (they key on GeneID and coordinates). Rebuild with
-## scripts/infer_rmats_junctions_gt.R to restore unit-level rMATS.
-## Once scripts/run_infer_junctions_gt_stranded.sh has rebuilt the junction GT
-## against the new IDs, it is picked up automatically and unit rows become real.
+## --- inputs ---------------------------------------------------------------
+## Every tool is scored on the strand-reconstructed inputs: signature counts and
+## GrASE tests from scripts/04_signature_pipeline.sh, DEXSeq on the stranded bins,
+## MAJIQ and rMATS on the origin-split BAMs. rMATS numbers its events from 0 in
+## each strand's run, so event IDs are strand-prefixed and scored against the
+## stranded junction truth (scripts/41_gt_junctions_stranded.sh).
 RMATS_STR_GT <- file.path(BASE, "results/sim_junction_gt.stranded.txt")
-RMATS_UNIT_NA <- STRANDED && !file.exists(RMATS_STR_GT)
-if (STRANDED && !RMATS_UNIT_NA) cat("  rMATS unit GT: using stranded rebuild\n")
+if (!file.exists(RMATS_STR_GT)) stop("missing ", RMATS_STR_GT, " -- run scripts/41_gt_junctions_stranded.sh")
 
 ## --- GT_rule unit truth -----------------------------------------------------
-## Unit truth of the per-part exonic lane; absent when only the signature
-## pipeline was run, and then only the GrASE_merged_* entries are scored.
-BPGT <- file.path(BASE, if (STRANDED) "results/gt/bipartition_gt.stranded.txt"
-                        else "results/gt/bipartition_gt.txt")
-bp_pos <- NULL
-if (file.exists(BPGT)) {
-  bpgt <- read.table(BPGT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-  bpgt$uid <- paste(bpgt$src, bpgt$gene, bpgt$event, bpgt$comparison, sep = "|")
-  bp_pos <- setNames(bpgt$GT_rule_bipartition, bpgt$uid)
-}
-## Merged (exon + split-read) unit truth, same rule, built by
-## scripts/infer_bipartition_gt.R --merged. bipartition_gt.txt cannot label a side
-## whose exonic distinct set is empty -- it drops those rows -- so scoring
-## GrASE_merged_all against bp_pos would silently call every junction-sourced
-## unit a negative (v[is.na(v)] <- FALSE below). Each GrASE variant is scored
-## against the truth built on the unit it actually tested.
-BPMGT <- file.path(BASE, if (STRANDED) "results/gt/bipartition_merged_gt.stranded.txt"
-                         else "results/gt/bipartition_merged_gt.txt")
-bp_pos_merged <- NULL
-if (file.exists(BPMGT)) {
-  bpm <- read.table(BPMGT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-  bpm$uid <- paste(bpm$src, bpm$gene, bpm$event, bpm$comparison, sep = "|")
-  bp_pos_merged <- setNames(bpm$GT_rule_bipartition, bpm$uid)
-  cat(sprintf("merged unit GT: %d tests (%d exon-sourced, %d sj-sourced)\n",
-              nrow(bpm), sum(bpm$D_source == "exon"), sum(bpm$D_source == "sj")))
-}
-## unit truth map for a GrASE variant
-bp_map <- function(tool) {
-  if (grepl("^GrASE_merged", tool) || identical(tool, "GrASE_nestedBH")) {
-    if (is.null(bp_pos_merged))
-      stop("GrASE_merged_all needs results/gt/bipartition_merged_gt.txt -- ",
-           "run scripts/infer_bipartition_gt.R --merged first")
-    return(bp_pos_merged)
-  }
-  if (is.null(bp_pos)) stop(tool, " needs ", BPGT)
-  bp_pos
-}
+## Unit truth of the signature tests (exon- and junction-sourced sides), built by
+## scripts/infer_bipartition_gt.R --merged; every GrASE entry is scored against it.
+BPMGT <- file.path(BASE, "results/gt/bipartition_merged_gt.stranded.txt")
+if (!file.exists(BPMGT)) stop("missing ", BPMGT, " -- run scripts/infer_bipartition_gt.R --merged")
+bpm <- read.table(BPMGT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+bpm$uid <- paste(bpm$src, bpm$gene, bpm$event, bpm$comparison, sep = "|")
+bp_pos_merged <- setNames(bpm$GT_rule_bipartition, bpm$uid)
+cat(sprintf("merged unit GT: %d tests (%d exon-sourced, %d sj-sourced)\n",
+            nrow(bpm), sum(bpm$D_source == "exon"), sum(bpm$D_source == "sj")))
 ## junction truth of the same MAJIQ build as the junction keys below
-jngt <- read.table(file.path(BASE, if (STRANDED) "results/gt/lsv_junction_gt.stranded.txt"
-                                   else "results/gt/lsv_junction_gt.txt"), header = TRUE,
+jngt <- read.table(file.path(BASE, "results/gt/lsv_junction_gt.stranded.txt"), header = TRUE,
                    sep = "\t", quote = "", stringsAsFactors = FALSE)
 jngt$uid <- paste(jngt$lsv_id, jngt$j_index, sep = "|")
 jn_pos <- setNames(jngt$GT_rule_junction, jngt$uid)
-## LSV universe and labels from the origin-split build when STRANDED: the
-## universe is data-dependent (whatever LSVs MAJIQ found), so reusing the old
-## build's 50,489 charges the stranded run 55 GT-positive LSVs it never tested.
-lsvr <- read.table(file.path(BASE, if (STRANDED) "results/gt/lsv_gt.stranded.txt"
-                                   else "results/gt/lsv_gt.txt"), header = TRUE,
+## LSV universe and labels from the origin-split build: the universe is
+## data-dependent (whatever LSVs MAJIQ found).
+lsvr <- read.table(file.path(BASE, "results/gt/lsv_gt.stranded.txt"), header = TRUE,
                    sep = "\t", stringsAsFactors = FALSE)
 lsv_pos_rule <- setNames(lsvr$GT_rule_lsv, lsvr$lsv_id)
 n_pos_lsvrule_cat <- table(lsvr$sim_type[lsvr$GT_rule_lsv])
@@ -135,13 +92,9 @@ n_pos_lsvrule_cat <- table(lsvr$sim_type[lsvr$GT_rule_lsv])
 ## ("plus:SE:39"). Every lookup then returned NA and all rMATS unit rows came
 ## out as TP 0 / FP 0 / n_pos 0 -- but only on a cached rerun, which is why the
 ## first stranded sweep looked fine.
-jgt_all <- read.table(if (STRANDED && !RMATS_UNIT_NA) RMATS_STR_GT else
-                      file.path(BASE, "results/sim_junction_gt.txt"),
-                      header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+jgt_all <- read.table(RMATS_STR_GT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 jgt_all <- jgt_all[!(jgt_all$n_inc_tx == 0 | jgt_all$n_skip_tx == 0), ]
-jgt_all$uid <- if (STRANDED && !RMATS_UNIT_NA)
-  paste(jgt_all$strand_run, jgt_all$event_type, jgt_all$ID, sep = ":") else
-  paste(jgt_all$event_type, jgt_all$ID, sep = ":")
+jgt_all$uid <- paste(jgt_all$strand_run, jgt_all$event_type, jgt_all$ID, sep = ":")
 rm_pos  <- setNames(jgt_all$gt_positive, jgt_all$uid)
 # per-category FULL positive counts
 cat_of_gene <- function(g) get_st(g)
@@ -156,25 +109,15 @@ n_pos_evt_cat   <- table(jgt_all$sim_type[jgt_all$gt_positive])
 if (file.exists(CACHE)) { calls <- readRDS(CACHE) } else {
 calls <- list()
 
-## --- GrASE (exonic parts; unit GT from the cached exonic-part GT) ----------
+## --- exonic-part truth (DEXSeq bins) ---------------------------------------
 ep <- readRDS(file.path(OUT, "ep_gt_cache.rds"))
 ep$key <- paste(ep$gene, ep$exonic_part, sep = ":")
 pos_key <- new.env(); for (k in ep$key[ep$gt_pos]) assign(k, TRUE, envir = pos_key)
 neg_key <- new.env(); for (k in ep$key[ep$gt_neg]) assign(k, TRUE, envir = neg_key)
 
-grase_files <- if (STRANDED)
-  c("bipartition.internal.stranded.test.EBapprox/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-    "bipartition.TSSTTS.stranded.test.EBapprox/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt") else
-  c("bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-    "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
-## columns the call rule reads; d_support is absent from the unstranded exonic run, where the read floor is a no-op
+## columns the call rule reads
 GR_COLS <- c("gene","event","comparison","padj","padj_gene","p.value","baseMean","lfc_diff_net","delta_pi",
              "delta_pi_perbase","effect_size","d_support","setdiff1","setdiff2","transcripts1","transcripts2")
-## the per-part exonic lane (GrASE, GrASE_internal, GrASE_dpi*) is scored only when
-## its test files are present; the GrASE_merged_* entries below do not need it
-HAVE_GR <- all(file.exists(file.path(BASE, grase_files)))
-if (HAVE_GR) grase_n <- vapply(grase_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE,
-                  sep="\t", quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
 read_gr <- function(f) {
   x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
@@ -185,10 +128,7 @@ read_gr <- function(f) {
     x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
   x[, intersect(GR_COLS, names(x))]
 }
-if (HAVE_GR) {
-gr <- bind_rows(lapply(grase_files, read_gr))
-gr$src <- rep(c("internal","TSSTTS"), times = grase_n)
-## UNIVERSE = EVERY enumerated bipartition test (339,684). A test whose gene was
+## UNIVERSE = EVERY enumerated bipartition test. A test whose gene was
 ## screened out at nested-BH stage 1 went through stage 1 and was rejected; that
 ## is a call, not an absence of testing. Both the stage-1 screen (padj == NA) and
 ## lfc_diff_net > 0 are therefore CALL conditions, applied via `stat` below.
@@ -196,11 +136,6 @@ gr$src <- rep(c("internal","TSSTTS"), times = grase_n)
 ## quantified junction whether called or not, DEXSeq's every bin with a padj.
 ## Filtering either condition into the universe removes GT positives from
 ## recall's denominator and inflates GrASE recall relative to those tools.
-gr$sd  <- ifelse(grepl("diff1", gr$comparison), as.character(gr$setdiff1), as.character(gr$setdiff2))
-gr$txs <- ifelse(grepl("diff1", gr$comparison), gr$transcripts1, gr$transcripts2)
-gr$uid <- paste(gr$src, gr$gene, gr$event, gr$comparison, sep = "|")
-gr$imp <- lapply(gr$txs, parse_l, sep = ",")
-}
 ## TWO-STAGE THRESHOLD. exontest.R's nested_bh (Benjamini-Bogomolov) screens
 ## genes by BH on Simes p-values, then within each selected gene runs BH and
 ## multiplies by m / R, where m is the number of genes tested and R the number
@@ -289,68 +224,15 @@ bh_padj <- function(pv, bm) {
 }
 grase_padj <- function(pv, gene, padj_gene, src, bm)
   if (PADJ_METHOD == "BH") bh_padj(pv, bm) else two_stage(pv, gene, padj_gene, src)
-if (!HAVE_GR) cat("  GrASE, GrASE_internal, GrASE_dpi*: per-part test files absent, skipping\n")
-if (HAVE_GR) {
-gr$padj2 <- grase_padj(gr$p.value, gr$gene, gr$padj_gene, gr$src, gr$baseMean)
-grok <- grase_ok(gr)
-st <- gr$padj2
-st[is.na(st)] <- 1                    # no statistic: a CALL condition, not a gap
-st[!grok]     <- 1                    # the effect-size and read gates are CALL conditions
-calls$GrASE <- list(
-  gene = gr$gene, stat = st, gene_stat = gr$padj_gene,
-  units = as.list(gr$uid), imp = gr$imp, lower_better = TRUE)
-cat(sprintf("  GrASE universe %d tests; callable (padj computed AND is_significant gates): %d\n",
-            nrow(gr), sum(grok)))
-## GrASE restricted to INTERNAL bubbles. MAJIQ cannot test a TSS/TTS boundary
-## at all, so the strict like-for-like against a junction uses this entry --
-## pooling TSS/TTS compares GrASE's extra reach against MAJIQ's absence rather
-## than comparing the units.
-## NOTE this is a UNIVERSE restriction, not a call-side filter, so it SUBSETS.
-## The dpi variants above must NOT subset (they keep every tested unit and make
-## the filtered ones un-callable) because a call-side filter does not change
-## what was tested. Getting these two backwards puts recall out by ~12x.
-ki <- gr$src == "internal"
-sti <- gr$padj2[ki]; sti[is.na(sti)] <- 1; sti[!grok[ki]] <- 1
-calls$GrASE_internal <- list(
-  gene = gr$gene[ki], stat = sti, gene_stat = gr$padj_gene[ki],
-  units = as.list(gr$uid[ki]), imp = gr$imp[ki], lower_better = TRUE)
-cat(sprintf("  GrASE_internal: %d of %d tests (universe restricted)\n", sum(ki), nrow(gr)))
-
-## Call-side effect-size variants, symmetric to MAJIQ's built-in C:
-##   GrASE_dpi0.1 <-> MAJIQ_C0.10      GrASE_dpi0.2 <-> MAJIQ_C0.20
-## Without these the curves compare MAJIQ WITH an effect-size threshold against
-## GrASE WITHOUT one, which is not a like-for-like operating characteristic.
-for (dp in c(0.1, 0.2)) {
-  k <- grase_ok(gr, dp)
-  ## Keep EVERY tested unit in the call list and make filtered-out tests
-  ## un-callable (padj set to 1, lower_better). Subsetting gr instead would
-  ## shrink `all_units`, and recall's denominator (upos_restr) is computed from
-  ## it -- so an aggressive filter would appear to RAISE recall, which is
-  ## impossible for a subset of the same calls.
-  st <- gr$padj2; st[is.na(st)] <- 1; st[!k] <- 1
-  calls[[sprintf("GrASE_dpi%.1f", dp)]] <- list(
-    gene = gr$gene, stat = st, gene_stat = gr$padj_gene,
-    units = as.list(gr$uid),
-    imp = gr$imp, lower_better = TRUE)
-  cat(sprintf("  GrASE_dpi%.1f: %d of %d tests callable (universe unchanged)\n",
-              dp, sum(k), nrow(gr)))
-}
-}
-
 ## --- GrASE_merged_all (exon+SJ merged counts, internal AND TSS/TTS) --------
 ## A bipartition side with no exclusive exonic part emits no exonic test. Where
 ## that side owns an exclusive intron, merge_exon_sj_counts.R substitutes its
 ## split-read count, so the side becomes testable. Same rule for both types
 ## (is.na(setdiff) & !is.na(intron_distinct)).
-## Unit truth for this tool comes from results/gt/bipartition_merged_gt.txt
-## (same GT_rule, junction-sourced sides included), selected by bp_map() above.
-## Its exon-sourced rows are identical to bipartition_gt.txt, so the only
-## difference from GrASE is the added junction-sourced units.
-merged_files <- if (STRANDED) c(
+## Unit truth: results/gt/bipartition_merged_gt.stranded.txt (bp_pos_merged above).
+merged_files <- c(
   "bipartition.merged.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
-  "bipartition.merged.TSSTTS.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt") else c(
-  "bipartition.merged.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
-  "bipartition.merged.TSSTTS.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
+  "bipartition.merged.TSSTTS.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
 if (all(file.exists(file.path(BASE, merged_files)))) {
   mgn <- vapply(merged_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE, sep="\t",
                 quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
@@ -367,11 +249,11 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
     units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
   cat(sprintf("  GrASE_merged_all universe %d tests; callable: %d\n",
               nrow(mg), sum(mok)))
-  ## Effect-size variants on the merged unit, matching the exonic ones:
+  ## Effect-size variants:
   ##   GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1
-  ## Call-side, so the universe is UNCHANGED (see the GrASE_dpi note above --
-  ## subsetting here would shrink all_units and make recall rise under a
-  ## stricter filter).
+  ## Call-side, so the universe is UNCHANGED: every tested unit stays in the call
+  ## list with filtered tests made un-callable. Subsetting would shrink all_units,
+  ## recall's denominator, and make recall rise under a stricter filter.
   for (dp in c(0.1, 0.2)) {
     mk <- grase_ok(mg, dp)
     mstk <- mg$padj2; mstk[is.na(mstk)] <- 1; mstk[!mk] <- 1
@@ -401,8 +283,8 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
     units = as.list(mg$uid), imp = mg$imp, lower_better = TRUE)
   cat(sprintf("  GrASE_merged_default: %d of %d tests callable (universe unchanged)\n",
               sum(mk), nrow(mg)))
-  ## internal-only merged bubbles: UNIVERSE restriction (as GrASE_internal is),
-  ## the strict like-for-like against a junction tool.
+  ## internal-only merged bubbles: a UNIVERSE restriction, so it subsets (MAJIQ
+  ## cannot test a TSS/TTS boundary); the strict like-for-like against a junction tool.
   mki <- mg$src == "internal"
   msti <- mg$padj2[mki]; msti[is.na(msti)] <- 1; msti[!mok[mki]] <- 1
   calls$GrASE_merged_internal <- list(
@@ -429,9 +311,8 @@ if (all(file.exists(file.path(BASE, merged_files)))) {
 }
 
 ## --- DEXSeq (bins) ---------------------------------------------------------
-dex <- read.table(file.path(BASE, if (STRANDED)
-    "DEXSeq/dexseq_group1_group2_stranded/all.group1_group2.dxd_filteredbyCountMultiExon.txt" else
-    "DEXSeq/dexseq_group1_group2/all.group1_group2.dxd_filteredbyCountMultiExon.txt"),
+dex <- read.table(file.path(BASE,
+    "DEXSeq/dexseq_group1_group2_stranded/all.group1_group2.dxd_filteredbyCountMultiExon.txt"),
                   header = FALSE, skip = 1, sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)
 dp <- suppressWarnings(as.numeric(dex[[8]])); keep <- !is.na(dp)
 dgene <- dex[[2]][keep]; dexon <- dex[[3]][keep]; dp <- dp[keep]
@@ -456,8 +337,7 @@ calls$DEXSeq <- list(gene = dgene, stat = dp, gene_stat = dp,
 ## both MAJIQ blocks below JOIN instead of rebuilding the junction->transcript
 ## map from the voila tsv (which cost ~20 min per run and duplicated work the
 ## GT pipeline already does).
-jk <- read.table(file.path(BASE, if (STRANDED) "results/gt/lsv_junction_keys.stranded.txt"
-                                 else "results/gt/lsv_junction_keys.txt"), header = TRUE,
+jk <- read.table(file.path(BASE, "results/gt/lsv_junction_keys.stranded.txt"), header = TRUE,
                  sep = "\t", quote = "", stringsAsFactors = FALSE)
 stopifnot("users" %in% names(jk))
 jk$uid <- paste(jk$lsv_id, jk$j_index, sep = "|")
@@ -468,9 +348,7 @@ cat(sprintf("  junction keys: %d junctions, %d with >=1 user\n",
 
 ## per-junction probabilities at the other C setting (cheap: no transcript work)
 prob_at <- function(Cv) {
-  tv <- read.table(file.path(BASE, sprintf(if (STRANDED)
-                     "majiq/majiq_deltapsi.stranded.thr%s.tsv" else
-                     "majiq/majiq_deltapsi.thr%s.tsv", Cv)),
+  tv <- read.table(file.path(BASE, sprintf("majiq/majiq_deltapsi.stranded.thr%s.tsv", Cv)),
                    header = TRUE, sep = "\t", quote = "", comment.char = "#",
                    stringsAsFactors = FALSE)
   u <- unlist(lapply(seq_len(nrow(tv)), function(i) {
@@ -516,15 +394,11 @@ for (Cv in c("0.20", "0.10")) {
 ## --- rMATS (events; inc U skip transcripts) --------------------------------
 csv_mean <- function(x) { v <- suppressWarnings(as.numeric(strsplit(x, ",")[[1]]))
                           if (all(is.na(v))) NA_real_ else mean(v, na.rm = TRUE) }
-jgt <- read.table(if (STRANDED && !RMATS_UNIT_NA) RMATS_STR_GT else
-                  file.path(BASE, "results/sim_junction_gt.txt"),
-                  header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+jgt <- read.table(RMATS_STR_GT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 jgt <- jgt[!(jgt$n_inc_tx == 0 | jgt$n_skip_tx == 0), ]
-## uid must match how the rMATS block keys its events below: strand-prefixed
-## under STRANDED, because rMATS renumbers from 0 in each half-run.
-jgt$uid <- if (STRANDED && !RMATS_UNIT_NA)
-  paste(jgt$strand_run, jgt$event_type, jgt$ID, sep = ":") else
-  paste(jgt$event_type, jgt$ID, sep = ":")
+## uid must match how the rMATS block keys its events below: strand-prefixed,
+## because rMATS renumbers from 0 in each half-run.
+jgt$uid <- paste(jgt$strand_run, jgt$event_type, jgt$ID, sep = ":")
 ## NOT reassigning rm_pos here: it is set once above, outside the cache gate, so
 ## that a cached rerun cannot end up with a stale key convention.
 rg <- list(); rstat <- c(); rgene <- c(); rimp <- list(); ruid <- c()
@@ -535,8 +409,7 @@ rdpsi <- c()          # rMATS' own |dPSI| (IncLevelDifference), for effect-size 
 ## implication therefore misses every intron-retaining transcript. Mirrors
 ## transcript_level_metrics.R's add_ev(span=) so the two scripts agree.
 tx_ex <- split(data.frame(s = start(exons_gr), e = end(exons_gr)), exons_gr$transcript_id)
-rm_dirs <- if (STRANDED) c(plus = "rMATS/stranded_plus/post", minus = "rMATS/stranded_minus/post")
-           else c(all = "rMATS/rmats_post_group1_group2")
+rm_dirs <- c(plus = "rMATS/stranded_plus/post", minus = "rMATS/stranded_minus/post")
 for (rmk in names(rm_dirs)) {
 for (et in c("SE","A3SS","A5SS","RI")) {
   rmf <- file.path(BASE, rm_dirs[[rmk]], paste0(et, ".MATS.JCEC.txt"))
@@ -578,7 +451,7 @@ for (et in c("SE","A3SS","A5SS","RI")) {
     rimp[[length(rimp)+1]] <- imp_i
     ## strand-prefixed so the two half-runs cannot collide (rMATS numbers from 0)
     rgene <- c(rgene, g); rstat <- c(rstat, fdr_call[i])
-    ruid <- c(ruid, if (STRANDED) paste(rmk, et, d$ID[i], sep=":") else paste(et, d$ID[i], sep=":"))
+    ruid <- c(ruid, paste(rmk, et, d$ID[i], sep=":"))
     rstat_nogate <- c(rstat_nogate, d$FDR[i])
     rdpsi <- c(rdpsi, suppressWarnings(as.numeric(d$IncLevelDifference[i])))
   }
@@ -587,9 +460,9 @@ for (et in c("SE","A3SS","A5SS","RI")) {
 calls$rMATS <- list(gene = rgene, stat = rstat, gene_stat = rstat,
                     units = as.list(ruid), imp = rimp, lower_better = TRUE)
 ## Call-side effect-size variants using rMATS' OWN dPSI estimate
-## (IncLevelDifference), the true analogue of GrASE_dpi / MAJIQ_C:
-##   rMATS_dpsi0.1 <-> GrASE_dpi0.1 <-> MAJIQ_C0.10
-##   rMATS_dpsi0.2 <-> GrASE_dpi0.2 <-> MAJIQ_C0.20
+## (IncLevelDifference), the true analogue of GrASE_merged_dpi / MAJIQ_C:
+##   rMATS_dpsi0.1 <-> GrASE_merged_dpi0.1 <-> MAJIQ_C0.10
+##   rMATS_dpsi0.2 <-> GrASE_merged_dpi0.2 <-> MAJIQ_C0.20
 ## Built on the GATED base (the documented configuration); like the GrASE dpi
 ## variants these do NOT subset -- below-threshold events stay in the universe
 ## and are made un-callable.
@@ -610,8 +483,7 @@ saveRDS(calls, CACHE)
 ## ===========================================================================
 ## Sweep each tool at three levels
 ## ===========================================================================
-GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              GrASE_merged_all = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
+GRIDS <- list(GrASE_merged_all = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.1" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_dpi0.2" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               "GrASE_merged_eff0.3" = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
@@ -621,9 +493,6 @@ GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_nestedBH = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               GrASE_merged_default = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              GrASE_dpi0.1 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              GrASE_dpi0.2 = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
-              GrASE_internal = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               DEXSeq = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
               MAJIQ_C0.20 = c(0.99,0.95,0.9,0.8,0.7,0.5),
               MAJIQ_C0.10 = c(0.99,0.95,0.9,0.8,0.7,0.5),
@@ -676,7 +545,7 @@ for (tool in names(calls)) {
   all_units <- unique(unlist(cl$units))
   # restricted denominators (positives among units this tool tested in this category)
   upos_restr <- if (grepl("^MAJIQjunc", tool)) sum(jn_pos[intersect(all_units, names(jn_pos))], na.rm = TRUE)
-                else if (grepl("^GrASE", tool)) { bpm_ <- bp_map(tool)
+                else if (grepl("^GrASE", tool)) { bpm_ <- bp_pos_merged
                      sum(bpm_[intersect(all_units, names(bpm_))], na.rm = TRUE) }
                 else if (grepl("^MAJIQ", tool)) sum(lsv_pos_rule[intersect(all_units, names(lsv_pos_rule))], na.rm = TRUE)
                 else if (grepl("^rMATS", tool))  sum(rm_pos[intersect(all_units, names(rm_pos))], na.rm = TRUE)
@@ -725,13 +594,12 @@ for (tool in names(calls)) {
       v <- jn_pos[su]; v[is.na(v)] <- FALSE
       tp <- sum(v); fp <- sum(!v)
     } else if (grepl("^GrASE", tool)) {
-      v <- bp_map(tool)[su]; v[is.na(v)] <- FALSE  # null-gene tests are negatives
+      v <- bp_pos_merged[su]; v[is.na(v)] <- FALSE  # null-gene tests are negatives
       tp <- sum(v); fp <- sum(!v)
     } else if (grepl("^MAJIQ", tool)) {
       v <- lsv_pos_rule[su]; tp <- sum(v, na.rm = TRUE); fp <- sum(!v, na.rm = TRUE)
     } else if (grepl("^rMATS", tool)) {
-      if (RMATS_UNIT_NA) { tp <- NA_integer_; fp <- NA_integer_ } else {
-        v <- rm_pos[su];  tp <- sum(v, na.rm = TRUE); fp <- sum(!v, na.rm = TRUE) }
+      v <- rm_pos[su];  tp <- sum(v, na.rm = TRUE); fp <- sum(!v, na.rm = TRUE)
     } else {
       tp <- sum(vapply(su, function(k) exists(k, envir = pos_key), logical(1)))
       fp <- sum(vapply(su, function(k) exists(k, envir = neg_key), logical(1)))
@@ -841,25 +709,19 @@ source(file.path(BASE, "scripts/plot_palette.R"))
 
 ## --- plot styling + tool selection ------------------------------------------
 ## Effect size is shown by SHADE (darker = stronger threshold); all lines solid:
-##   GrASE (none) -> GrASE_dpi0.1 -> GrASE_dpi0.2   light -> dark orange
+##   GrASE_merged_all -> GrASE_merged_dpi0.1 -> GrASE_merged_dpi0.2   light -> dark red
 ##   MAJIQ_C0.10  -> MAJIQ_C0.20                     light -> dark teal
 ## Distinct HUE per tool; effect size = SHADE within the hue (darker = stronger):
 ##   GrASE = red, DEXSeq = orange, MAJIQ = green, rMATS = navy/purple.
-## A merged variant keeps its exonic twin's colour, so the same shade means the
-## same operating point in either family. The PLOTS show only the MERGED GrASE
-## family: the merged unit is a strict superset of the exonic one (a junction
-## count is substituted only where the exonic pipeline had nothing to count), so
-## the exonic curves are a subset view and drawing both doubled the red curves
-## for no added information. Both families stay in the TABLE.
 ## GrASE_nestedBH first so it heads the legend, then the GrASE family on PADJ_METHOD.
 ## DEXSeq moved to blue to free the orange range for GrASE_nestedBH.
 COL <- c("GrASE_merged_default"="#000000", "GrASE_nestedBH"="#fec44f",
-         GrASE="#fb6a4a", "GrASE_merged_all"="#fb6a4a",
-         "GrASE_dpi0.1"="#de2d26", "GrASE_merged_dpi0.1"="#de2d26",
-         "GrASE_dpi0.2"="#a50f15", "GrASE_merged_dpi0.2"="#a50f15",
+         "GrASE_merged_all"="#fb6a4a",
+         "GrASE_merged_dpi0.1"="#de2d26",
+         "GrASE_merged_dpi0.2"="#a50f15",
          "GrASE_merged_eff0.3"="#fcc5c0", "GrASE_merged_eff0.4"="#fa9fb5",
          "GrASE_merged_eff0.5"="#f768a1", "GrASE_merged_eff1.0"="#ae017e",
-         "GrASE_internal"="#67000d", "GrASE_merged_internal"="#67000d",
+         "GrASE_merged_internal"="#67000d",
          DEXSeq="#3182bd",
          MAJIQ_C0.10="#a1d99b", MAJIQ_C0.20="#238b45",
          ## rMATS purples were #3f007d / #6a51a3 / #54278f -- three near-identical
@@ -870,12 +732,9 @@ COL <- c("GrASE_merged_default"="#000000", "GrASE_nestedBH"="#fec44f",
          "rMATS_dpsi0.1"="#756bb1", "rMATS_dpsi0.2"="#3f007d")
 LTY <- setNames(rep(1L, length(COL)), names(COL))   # all solid; effect size = shade
 ## EDIT this to choose which curves are drawn (set to names(COL) for all).
-## Dropped by default: every EXONIC GrASE variant (superseded by its merged
-## twin) and GrASE_merged_internal (a universe-restricted view, not comparable
-## to the pooled curves).
-PLOT_TOOLS <- setdiff(names(COL),
-                      c("GrASE", "GrASE_dpi0.1", "GrASE_dpi0.2",
-                        "GrASE_internal", "GrASE_merged_internal"))
+## Dropped by default: GrASE_merged_internal (a universe-restricted view, not
+## comparable to the pooled curves).
+PLOT_TOOLS <- setdiff(names(COL), "GrASE_merged_internal")
 ## Display labels only. The merged variants are the ONLY GrASE family drawn, so
 ## the "_merged" tag carries no information in the figure and just lengthens
 ## every label. Names in the written table are untouched -- figure and table are

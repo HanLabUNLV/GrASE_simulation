@@ -1,20 +1,12 @@
 #!/bin/bash
 # Everything downstream of the merged (exon + split-read) exontest runs.
 #
-# Usage: bash scripts/30_merge_downstream.sh [stranded|unstranded]
-#        (default: stranded -- the lane the manuscript reports)
+# Usage: bash scripts/30_merge_downstream.sh
 #
-# LANE IS NOT COSMETIC. Three different env vars select it, with three
-# different names, and a stage that misses one silently reads the other lane's
-# files and produces a table that looks valid:
-#   pr_curves_three_levels_gtrule.R   STRANDED=1
-#   infer_bipartition_gt.R            GT_RULE_STRANDED=1
-#   transcript_level_metrics.R        neither -- it reads BOTH lanes and emits
-#                                     GrASE_merged_* and GrASE_merged_stranded_*
-#                                     as separate tools
-# This script existed from 2026-09-10 with none of them set, so it ran entirely
-# unstranded while every reported stranded number came from manual
-# STRANDED=1 invocations (see sweep_*.log). Do not drop the exports.
+# Scores the signature tests (04_signature_pipeline.sh) and the other tools on the
+# strand-reconstructed inputs. infer_bipartition_gt.R still selects its lane by
+# GT_RULE_STRANDED, so it is exported here; the sweep and the transcript metrics
+# read the stranded inputs only.
 #
 #   1. per-event provenance (which side used a junction, and which junction)
 #   2. merged unit ground truth -- same GT_rule, junction-sourced sides included
@@ -28,27 +20,12 @@
 set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 EV=results/eval_metricfair
-LANE=${1:-stranded}
-
-# grase resolves via ~/.Renviron to the shared library at
-# /mnt/data1/home/jaquino/R/... -- re-install there after any edit to
-# Rpkg/R/*.R, or the previous build's signatures are used silently:
-#   R CMD INSTALL --library=/mnt/data1/home/jaquino/R/x86_64-pc-linux-gnu-library/4.2 \
-#                 /mnt/data1/home/mirahan/GrASE/Rpkg
-
-if [ "$LANE" = "stranded" ]; then
-  export STRANDED=1 GT_RULE_STRANDED=1
-  CNT_INT=bipartition.merged.stranded.counts
-  CNT_TSS=bipartition.merged.TSSTTS.stranded.counts
-  GT=results/gt/bipartition_merged_gt.stranded.txt
-  SFX=.stranded
-else
-  unset STRANDED GT_RULE_STRANDED || true
-  CNT_INT=bipartition.merged.counts
-  CNT_TSS=bipartition.merged.TSSTTS.counts
-  GT=results/gt/bipartition_merged_gt.txt
-  SFX=
-fi
+LANE=stranded
+export STRANDED=1 GT_RULE_STRANDED=1
+CNT_INT=bipartition.merged.stranded.counts
+CNT_TSS=bipartition.merged.TSSTTS.stranded.counts
+GT=results/gt/bipartition_merged_gt.stranded.txt
+SFX=.stranded
 # SJAWARE gates the sweep's dpi floor for junction-sourced sides (0.05 vs the
 # exonic 0.1). Set to match the shipped add_significant() default, which is
 # source-aware as of 2026-09-14. Unset it here to sweep at a uniform floor.

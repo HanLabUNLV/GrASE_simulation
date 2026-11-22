@@ -37,10 +37,10 @@
 #
 # Call rules, as implemented below (padj 0.01 throughout):
 #   GrASE : grase::is_significant() at 0.01 on the padj of PADJ_METHOD (default
-#           plain BH over the internal and TSS/TTS files of a lane pooled;
+#           plain BH over the internal and TSS/TTS files pooled;
 #           nested_BH = two_stage per test file): lfc_diff_net > 0, d_support >= 10,
 #           no effect-size gate. The _dpi0.1 / _dpi0.2 variants add raw and per-base
-#           |delta_pi| >= 0.1 / 0.2; the merged _eff0.5 / _eff1.0 variants add
+#           |delta_pi| >= 0.1 / 0.2; the _eff0.5 / _eff1.0 variants add
 #           |effect_size| >= 0.5 / 1.0 instead. Same gates as
 #           pr_curves_three_levels_gtrule.R.
 #   DEXSeq: exon-level padj < 0.01.
@@ -254,84 +254,10 @@ read_gr <- function(f) {
 
 ## --- GrASE ------------------------------------------------------------------
 cat("GrASE...\n")
-grase_src <- c(internal = "bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-               TSSTTS   = "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
-## the unstranded per-part lane is scored only when its test files are present
 grase_tab <- NULL
-HAVE_G <- all(file.exists(file.path(BASE, grase_src)))
-if (!HAVE_G) cat("  GrASE, GrASE_dpi*, GrASE_internal, GrASE_merged: unstranded test files absent, skipping\n")
-if (HAVE_G) {
-g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE, sep = "\t",
-              quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
-g <- bind_rows(lapply(grase_src, read_gr))
-g$src <- rep(names(grase_src), times = g_n)
-## base call condition: padj below 0.01, AND the is_significant() gates
-g$padj2 <- grase_padj(g$p.value, g$gene, g$padj_gene, g$src, g$baseMean)
-g <- g[grase_ok(g), ]
-g$imp <- lapply(ifelse(grepl("diff1", g$comparison), g$transcripts1, g$transcripts2), parse_list)
-g$sim_type <- get_st(g$gene)
-grase_tab <- score_tool(g[, c("gene", "sim_type", "imp")], "GrASE")
-## Call-side effect-size variants, symmetric to MAJIQ's built-in C
-## (GrASE_dpi0.1 <-> MAJIQ_C0.10, GrASE_dpi0.2 <-> MAJIQ_C0.20). Without these
-## the table compares MAJIQ WITH an effect-size threshold against GrASE WITHOUT
-## one, which is not a like-for-like operating point.
-for (dp in c(0.1, 0.2)) {
-  gk <- g[grase_ok(g, dp), ]
-  grase_tab <- bind_rows(grase_tab,
-    score_tool(gk[, c("gene", "sim_type", "imp")], sprintf("GrASE_dpi%.1f", dp)))
-}
-}
-## GrASE on the STRAND-RECONSTRUCTED counts, exonic unit, no junction merge.
-## Same bipartitions, same model, same call rule -- only the counts differ:
-## dexseq_count --stranded reverse on an unstranded library (half depth,
-## antisense contamination) vs strand recovered from read origin.
-## See ../stranded_reconstruction.md.
-str_src <- c(internal = "bipartition.internal.stranded.test.EBapprox/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
-             TSSTTS   = "bipartition.TSSTTS.stranded.test.EBapprox/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
-if (all(file.exists(file.path(BASE, str_src)))) {
-  sn <- vapply(str_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE,
-        sep = "\t", quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
-  sg <- bind_rows(lapply(str_src, read_gr))
-  sg$src <- rep(names(str_src), times = sn)
-  sg$padj2 <- grase_padj(sg$p.value, sg$gene, sg$padj_gene, sg$src, sg$baseMean)
-  sg <- sg[grase_ok(sg), ]
-  sg$imp <- lapply(ifelse(grepl("diff1", sg$comparison), sg$transcripts1, sg$transcripts2), parse_list)
-  sg$sim_type <- get_st(sg$gene)
-  K <- c("gene","sim_type","imp")
-  grase_tab <- bind_rows(grase_tab, score_tool(sg[, K], "GrASE_stranded"))
-  for (dp in c(0.1, 0.2)) {
-    sk <- sg[grase_ok(sg, dp), ]
-    grase_tab <- bind_rows(grase_tab,
-      score_tool(sk[, K], sprintf("GrASE_stranded_dpi%.1f", dp)))
-  }
-  grase_tab <- bind_rows(grase_tab,
-    score_tool(sg[sg$src == "internal", K], "GrASE_stranded_internal"))
-}
 
-## internal-only bubbles: the strict like-for-like against a junction, since
-## MAJIQ cannot test a TSS/TTS boundary at all.
-if (HAVE_G) {
-gi <- g[g$src == "internal", ]
-grase_tab <- bind_rows(grase_tab,
-  score_tool(gi[, c("gene", "sim_type", "imp")], "GrASE_internal"))
-}
-
-## GrASE with junction-merged bipartitions, BOTH types. A side with no
-## exclusive exonic part emits no test in the exonic pipeline; where that side
-## owns an exclusive intron, the merged counts substitute its split-read count.
-## The rule is the same for internal and TSS/TTS (merge_exon_sj_counts.R fires
-## on is.na(setdiff) & !is.na(intron_distinct)). It was first applied only to
-## internal on the assumption that a TSS/TTS empty side is always a nested
-## terminal path with no unique junction; that holds for part of them, but a
-## large share are alternative donors/acceptors riding inside a terminal bubble
-## and DO own an exclusive junction (scan: scripts/tsstts_empty_scan.py).
-## UNSTRANDED merged unit, kept only as a comparator. The reported tables read
-## GrASE_merged_stranded (built from `mstr` below, the stranded merged dirs), so
-## do NOT repoint these at the stranded lane -- that would make
-## GrASE_merged_all identical to GrASE_merged_stranded and destroy the contrast.
-merged_src <- c(
-  internal = "bipartition.merged.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
-  TSSTTS   = "bipartition.merged.TSSTTS.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
+## GrASE: the signature tests (scripts/04_signature_pipeline.sh), internal and
+## TSS/TTS bubbles, on the strand-reconstructed counts.
 ## read_merged() returns every test of one file; grase_calls() adjusts a lane
 ## (its internal and TSS/TTS files together, so plain BH pools them) and keeps
 ## the base calls.
@@ -339,9 +265,6 @@ read_merged <- function(f) {
   p <- file.path(BASE, f)
   if (!file.exists(p)) return(NULL)
   d <- read_gr(f)
-  ## the unstranded merged TSS/TTS file has no d_support column; Inf keeps the read
-  ## floor a no-op for it once it is stacked with a file that has one
-  if (!"d_support" %in% names(d)) d$d_support <- Inf
   d$src <- if (grepl("TSSTTS", f)) "TSSTTS" else "internal"
   d
 }
@@ -354,39 +277,6 @@ grase_calls <- function(d) {
   d$padj2 <- grase_padj(d$p.value, d$gene, d$padj_gene, d$src, d$baseMean)
   add_imp(d[grase_ok(d), ])
 }
-mg_int <- read_merged(merged_src[["internal"]])
-mg_tss <- read_merged(merged_src[["TSSTTS"]])
-## the unstranded merged lane needs its internal file and the unstranded per-part TSS/TTS calls
-if (HAVE_G && !is.null(mg_int)) {
-mg <- grase_calls(bind_rows(mg_int, mg_tss))
-mg_int <- mg[mg$src == "internal", ]
-KEEP <- c("gene", "sim_type", "imp")
-## internal merged + exonic TSS/TTS -- the earlier operating point, kept so the
-## TSS/TTS extension can be read off as a separate increment.
-grase_tab <- bind_rows(grase_tab, score_tool(
-  bind_rows(mg_int[, KEEP], g[g$src == "TSSTTS", KEEP]), "GrASE_merged"))
-if (!is.null(mg_tss)) {
-  grase_tab <- bind_rows(grase_tab, score_tool(mg[, KEEP], "GrASE_merged_all"))
-  ## Effect-size variants on the merged unit, so every matched triple has a
-  ## merged member:  GrASE_merged_dpi0.1 <-> MAJIQ_C0.10 <-> rMATS_dpsi0.1, etc.
-  for (dp in c(0.1, 0.2)) {
-    mk <- mg[grase_ok(mg, dp), ]
-    grase_tab <- bind_rows(grase_tab,
-      score_tool(mk[, KEEP], sprintf("GrASE_merged_dpi%.1f", dp)))
-  }
-  ## |effect_size| (log odds ratio) variants, delta_pi gate off
-  for (ef in c(0.5, 1)) {
-    mk <- mg[grase_ok(mg, eff = ef), ]
-    grase_tab <- bind_rows(grase_tab,
-      score_tool(mk[, KEEP], sprintf("GrASE_merged_eff%.1f", ef)))
-  }
-  ## internal-only merged: the like-for-like against a junction tool, since
-  ## MAJIQ cannot test a TSS/TTS boundary at all.
-  grase_tab <- bind_rows(grase_tab,
-    score_tool(mg_int[, KEEP], "GrASE_merged_internal"))
-}
-}
-## same merged unit, on the STRAND-RECONSTRUCTED counts
 mstr <- c(internal = "bipartition.merged.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
           TSSTTS   = "bipartition.merged.TSSTTS.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt")
 if (all(file.exists(file.path(BASE, mstr)))) {
@@ -470,11 +360,9 @@ if (all(file.exists(file.path(BASE, mstr)))) {
 
 ## --- DEXSeq -----------------------------------------------------------------
 cat("DEXSeq...\n")
-## Scored for both count sources: the original (dexseq_count --stranded reverse
-## on an unstranded library) and the strand-reconstructed rerun.
+## On the strand-reconstructed bins.
 dexseq_tab <- NULL
-for (dxcfg in list(c("DEXSeq",          "DEXSeq/dexseq_group1_group2/all.group1_group2.dxd_filteredbyCountMultiExon.txt"),
-                   c("DEXSeq_stranded", "DEXSeq/dexseq_group1_group2_stranded/all.group1_group2.dxd_filteredbyCountMultiExon.txt"))) {
+for (dxcfg in list(c("DEXSeq_stranded", "DEXSeq/dexseq_group1_group2_stranded/all.group1_group2.dxd_filteredbyCountMultiExon.txt"))) {
 dxlab <- dxcfg[1]; dxpath <- dxcfg[2]
 if (!file.exists(file.path(BASE, dxpath))) next
 dex <- read.table(file.path(BASE, dxpath),
@@ -508,12 +396,8 @@ exons_gr <- import(file.path(BASE, "ref/gencode.v28.annotation.gtf"),
   jstr <- paste(en_[-n], st_[-1], sep = "-")[same]
   tx_junc <- split(jstr, tid[-n][same]) }
 majiq_tab <- NULL
-## Scored for both BAM sources: the original unsplit BAMs and the
-## origin-split ones. MAJIQ is largely but not wholly immune to the antisense
-## contamination -- junctions are protected by splice-site matching, intron
-## retention is quantified from strand-blind intronic coverage.
-majiq_cfg <- list(c("", "majiq/majiq_deltapsi.thr%s.tsv"),
-                  c("_stranded", "majiq/majiq_deltapsi.stranded.thr%s.tsv"))
+## On the origin-split BAMs.
+majiq_cfg <- list(c("_stranded", "majiq/majiq_deltapsi.stranded.thr%s.tsv"))
 for (mcfg in majiq_cfg) {
 mlab <- mcfg[1]; mpat <- mcfg[2]
 for (Cv in c("0.20", "0.10")) {
@@ -570,18 +454,13 @@ rmats_tab <- NULL
 ## variants: documented gate ON (base), gate OFF, and call-side effect-size
 ## thresholds on rMATS' own |IncLevelDifference| -- the true analogue of
 ## GrASE_dpi / MAJIQ_C (the PSI gate is a raw-PSI boundary guard, not one).
-## Scored on BOTH count sources, matching every other tool in this table.
 ## The stranded rMATS run is split by strand (rMATS renumbers events from 0 in
 ## each half-run, so the halves are separate post dirs and are simply pooled
 ## here -- a gene contributes to one strand only). Directory convention mirrors
 ## rm_dirs in pr_curves_three_levels_gtrule.R so the two scripts agree.
-RM_UNSTR <- c(all   = "rMATS/rmats_post_group1_group2")
 RM_STR   <- c(plus  = "rMATS/stranded_plus/post",
               minus = "rMATS/stranded_minus/post")
-rm_variants <- list(list(nm = "rMATS",                  gate = TRUE, dp = 0,   dirs = RM_UNSTR),
-                    list(nm = "rMATS_dpsi0.1",          gate = TRUE, dp = 0.1, dirs = RM_UNSTR),
-                    list(nm = "rMATS_dpsi0.2",          gate = TRUE, dp = 0.2, dirs = RM_UNSTR),
-                    list(nm = "rMATS_stranded",         gate = TRUE, dp = 0,   dirs = RM_STR),
+rm_variants <- list(list(nm = "rMATS_stranded",         gate = TRUE, dp = 0,   dirs = RM_STR),
                     list(nm = "rMATS_stranded_dpsi0.1", gate = TRUE, dp = 0.1, dirs = RM_STR),
                     list(nm = "rMATS_stranded_dpsi0.2", gate = TRUE, dp = 0.2, dirs = RM_STR))
 for (VAR in rm_variants) {
