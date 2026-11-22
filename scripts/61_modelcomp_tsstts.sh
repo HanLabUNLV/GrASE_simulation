@@ -44,7 +44,7 @@ run () {
     --file bipartition.merged.stranded.TSSTTS.exoncnt.combined.txt \
     --countdir $CNT --outdir $OUT \
     --splittype bipartition --model "$m" \
-    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 6 "$@" \
+    --cond1 group1 --cond2 group2 --gff_dir $GFF --read_length 100 --sj_overhang 1 "$@" \
     &> modelcomp.tss.$m.log
   echo "  -> $(stat -c %s $OUT/test_bipartition.merged_${m}.txt 2>/dev/null || echo FAILED) bytes"
 }

@@ -8,7 +8,7 @@
 #   0. split the bipartitions into internal and terminal events
 #   1. junction sets of every bipartition (distinct and shared introns)
 #   2. per-side counts from the read signatures (sigcnt.py)
-#   3. tests, default count mode (no --count_per_part), --sj_overhang 6 as STAR pass 2
+#   3. tests, default count mode (no --count_per_part), --sj_overhang 1 as STAR pass 2 (05_star_align.sh)
 #
 # Writes the directories 30_merge_downstream.sh, 60_, 61_ and the evaluation
 # scripts read. Their current contents (per-part counts) are moved to
@@ -71,7 +71,7 @@ run_test () {   # class countdir outdir phibase
   Rscript $R/exontest.R --prefix "bipartition.exsj.$T" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
       --cond1 group1 --cond2 group2 --use_phi_loess --padj_threshold=0.01 \
-      --min_reads 10 --gff_dir $GFF --read_length 100 --sj_overhang 6 &> "$OD/test.log"
+      --min_reads 10 --gff_dir $GFF --read_length 100 --sj_overhang 1 &> "$OD/test.log"
   for f in $OD/test_bipartition.exsj.${T}_*; do
     ln -sf "$(basename "$f")" "$OD/$(basename "$f" | sed "s/^test_bipartition\.exsj\.${T}_/test_bipartition.merged_/")"
   done

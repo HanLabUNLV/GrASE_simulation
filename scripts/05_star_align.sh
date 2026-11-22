@@ -1,7 +1,8 @@
 #!/bin/bash
 # Two-pass STAR alignment of the 24 simulated samples against the primary assembly
-# (~/GrASE/scripts/star_two_pass.sh), with the settings of the original run:
-# paired 100 bp reads, --alignSJDBoverhangMin 6, GENCODE v28 for both passes,
+# (~/GrASE/scripts/star_two_pass.sh), with the settings of the original run except the overhang:
+# paired 100 bp reads, GENCODE v28 for both passes, --alignSJDBoverhangMin 1 (as
+# DICE; the original run used 6, and the tests' --sj_overhang follows this value),
 # junctions filtered per group. Get the genome first with
 #   bash ~/GrASE/scripts/primary_assembly.sh ref 28
 # Then run 01_stranded_recount.sh with STAR_BAM_FMT=STAR_align/bam/%s.
@@ -14,7 +15,7 @@ JOBS=${1:-12}; THREADS=${2:-4}
 STAR_BIN=${STAR_BIN:-$HOME/miniconda3/envs/star2711b/bin/STAR}
 SAMTOOLS=${SAMTOOLS:-$HOME/miniconda3/envs/cnr_bam/bin/samtools}
 GENOME_FASTA=${GENOME_FASTA:-$BASE/ref/GRCh38.primary_assembly.genome.fa}
-OH_MIN=${OH_MIN:-6}
+OH_MIN=${OH_MIN:-1}
 mkdir -p STAR_align
 for G in group1 group2; do
   SN=$([ "$G" = group1 ] && echo sample_01 || echo sample_02)
