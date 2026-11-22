@@ -55,9 +55,6 @@ ep <- readRDS(file.path(OUT, "ep_gt_cache.rds"))
 ep$key <- paste(ep$gene, ep$exonic_part, sep = ":")
 pos_key <- new.env(); for (k in ep$key[ep$gt_pos]) assign(k, TRUE, envir = pos_key)
 neg_key <- new.env(); for (k in ep$key[ep$gt_neg]) assign(k, TRUE, envir = neg_key)
-lsvgt   <- read.table(file.path(BASE, "results/sim_lsv_gt.txt"), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-lsv_pos <- setNames(lsvgt$gt_positive, lsvgt$lsv_id)
-lsv_full<- read.table(file.path(BASE, "results/sim_lsv_gt.full.txt"), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 ## --- strand-reconstruction switch -------------------------------------------
 ## STRANDED=1 scores every tool on the strand-corrected inputs: exonic counts
 ## recounted with the read's true strand of origin (see stranded_reconstruction.md),
@@ -143,7 +140,6 @@ rm_pos  <- setNames(jgt_all$gt_positive, jgt_all$uid)
 # per-category FULL positive counts
 cat_of_gene <- function(g) get_st(g)
 n_pos_parts_cat <- table(ep$sim_type[ep$gt_pos])
-n_pos_lsv_cat   <- table(lsv_full$sim_type[lsv_full$gt_positive])
 n_pos_evt_cat   <- table(jgt_all$sim_type[jgt_all$gt_positive])
 
 ## ===========================================================================
@@ -591,7 +587,7 @@ for (dp in c(0.1, 0.2)) {
     units = as.list(ruid), imp = rimp, lower_better = TRUE)
 }
 attr(calls, "pos_key") <- pos_key; attr(calls, "neg_key") <- neg_key
-attr(calls, "lsv_pos") <- lsv_pos; attr(calls, "rm_pos") <- rm_pos
+attr(calls, "rm_pos") <- rm_pos
 saveRDS(calls, CACHE)
 }
 # (GT tables and pos/neg keys are built above, outside the cache, so that the
@@ -624,9 +620,6 @@ GRIDS <- list(GrASE = c(1e-4,1e-3,0.01,0.05,0.1,0.2),
 # unit that exists, tested or not). RESTRICTED = positives among units the tool
 # actually tested. Precision is identical in both (same TP/FP); only recall moves.
 n_pos_parts_full <- sum(vapply(ls(pos_key), function(k) TRUE, logical(1)))
-lsv_full <- read.table(file.path(BASE, "results/sim_lsv_gt.full.txt"),
-                       header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-n_pos_lsv_full <- sum(lsv_full$gt_positive)
 n_pos_evt_full <- sum(rm_pos)                    # all annotated testable events
 n_pos_gene_full <- length(sig_genes)
 n_pos_tx_full   <- length(manip_tx)
