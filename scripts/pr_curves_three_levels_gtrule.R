@@ -77,12 +77,16 @@ RMATS_UNIT_NA <- STRANDED && !file.exists(RMATS_STR_GT)
 if (STRANDED && !RMATS_UNIT_NA) cat("  rMATS unit GT: using stranded rebuild\n")
 
 ## --- GT_rule unit truth -----------------------------------------------------
-bpgt <- read.table(file.path(BASE, if (STRANDED) "results/gt/bipartition_gt.stranded.txt"
-                                   else "results/gt/bipartition_gt.txt"), header = TRUE,
-                   sep = "\t", stringsAsFactors = FALSE)
-bpgt$uid <- paste(bpgt$src, bpgt$gene, bpgt$event, bpgt$comparison, sep = "|")
-bp_pos <- setNames(bpgt$GT_rule_bipartition, bpgt$uid)
-n_pos_bp_cat <- table(bpgt$sim_type[bpgt$GT_rule_bipartition])
+## Unit truth of the per-part exonic lane; absent when only the signature
+## pipeline was run, and then only the GrASE_merged_* entries are scored.
+BPGT <- file.path(BASE, if (STRANDED) "results/gt/bipartition_gt.stranded.txt"
+                        else "results/gt/bipartition_gt.txt")
+bp_pos <- NULL
+if (file.exists(BPGT)) {
+  bpgt <- read.table(BPGT, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  bpgt$uid <- paste(bpgt$src, bpgt$gene, bpgt$event, bpgt$comparison, sep = "|")
+  bp_pos <- setNames(bpgt$GT_rule_bipartition, bpgt$uid)
+}
 ## Merged (exon + split-read) unit truth, same rule, built by
 ## scripts/infer_bipartition_gt.R --merged. bipartition_gt.txt cannot label a side
 ## whose exonic distinct set is empty -- it drops those rows -- so scoring
@@ -107,13 +111,15 @@ bp_map <- function(tool) {
            "run scripts/infer_bipartition_gt.R --merged first")
     return(bp_pos_merged)
   }
+  if (is.null(bp_pos)) stop(tool, " needs ", BPGT)
   bp_pos
 }
-jngt <- read.table(file.path(BASE, "results/gt/lsv_junction_gt.txt"), header = TRUE,
+## junction truth of the same MAJIQ build as the junction keys below
+jngt <- read.table(file.path(BASE, if (STRANDED) "results/gt/lsv_junction_gt.stranded.txt"
+                                   else "results/gt/lsv_junction_gt.txt"), header = TRUE,
                    sep = "\t", quote = "", stringsAsFactors = FALSE)
 jngt$uid <- paste(jngt$lsv_id, jngt$j_index, sep = "|")
 jn_pos <- setNames(jngt$GT_rule_junction, jngt$uid)
-n_pos_jn_cat <- table(jngt$sim_type[jngt$GT_rule_junction])
 ## LSV universe and labels from the origin-split build when STRANDED: the
 ## universe is data-dependent (whatever LSVs MAJIQ found), so reusing the old
 ## build's 50,489 charges the stranded run 55 GT-positive LSVs it never tested.
@@ -164,8 +170,11 @@ grase_files <- if (STRANDED)
 ## columns the call rule reads; d_support is absent from the unstranded exonic run, where the read floor is a no-op
 GR_COLS <- c("gene","event","comparison","padj","padj_gene","p.value","baseMean","lfc_diff_net","delta_pi",
              "delta_pi_perbase","effect_size","d_support","setdiff1","setdiff2","transcripts1","transcripts2")
-grase_n <- vapply(grase_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE, sep="\t",
-                  quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
+## the per-part exonic lane (GrASE, GrASE_internal, GrASE_dpi*) is scored only when
+## its test files are present; the GrASE_merged_* entries below do not need it
+HAVE_GR <- all(file.exists(file.path(BASE, grase_files)))
+if (HAVE_GR) grase_n <- vapply(grase_files, function(f) nrow(read.table(file.path(BASE,f), header=TRUE,
+                  sep="\t", quote="", comment.char="", stringsAsFactors=FALSE)), integer(1))
 read_gr <- function(f) {
   x <- read.table(file.path(BASE, f), header = TRUE, sep = "\t", quote = "", comment.char = "",
                   stringsAsFactors = FALSE)
@@ -176,6 +185,7 @@ read_gr <- function(f) {
     x$padj_gene <- nested_bh(data.frame(gene = x$gene, pvalue = x$p.value))$padj_gene
   x[, intersect(GR_COLS, names(x))]
 }
+if (HAVE_GR) {
 gr <- bind_rows(lapply(grase_files, read_gr))
 gr$src <- rep(c("internal","TSSTTS"), times = grase_n)
 ## UNIVERSE = EVERY enumerated bipartition test (339,684). A test whose gene was
@@ -190,6 +200,7 @@ gr$sd  <- ifelse(grepl("diff1", gr$comparison), as.character(gr$setdiff1), as.ch
 gr$txs <- ifelse(grepl("diff1", gr$comparison), gr$transcripts1, gr$transcripts2)
 gr$uid <- paste(gr$src, gr$gene, gr$event, gr$comparison, sep = "|")
 gr$imp <- lapply(gr$txs, parse_l, sep = ",")
+}
 ## TWO-STAGE THRESHOLD. exontest.R's nested_bh (Benjamini-Bogomolov) screens
 ## genes by BH on Simes p-values, then within each selected gene runs BH and
 ## multiplies by m / R, where m is the number of genes tested and R the number
@@ -278,6 +289,8 @@ bh_padj <- function(pv, bm) {
 }
 grase_padj <- function(pv, gene, padj_gene, src, bm)
   if (PADJ_METHOD == "BH") bh_padj(pv, bm) else two_stage(pv, gene, padj_gene, src)
+if (!HAVE_GR) cat("  GrASE, GrASE_internal, GrASE_dpi*: per-part test files absent, skipping\n")
+if (HAVE_GR) {
 gr$padj2 <- grase_padj(gr$p.value, gr$gene, gr$padj_gene, gr$src, gr$baseMean)
 grok <- grase_ok(gr)
 st <- gr$padj2
@@ -321,6 +334,7 @@ for (dp in c(0.1, 0.2)) {
     imp = gr$imp, lower_better = TRUE)
   cat(sprintf("  GrASE_dpi%.1f: %d of %d tests callable (universe unchanged)\n",
               dp, sum(k), nrow(gr)))
+}
 }
 
 ## --- GrASE_merged_all (exon+SJ merged counts, internal AND TSS/TTS) --------

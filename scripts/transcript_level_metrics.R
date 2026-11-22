@@ -256,6 +256,11 @@ read_gr <- function(f) {
 cat("GrASE...\n")
 grase_src <- c(internal = "bipartition.test.fulldesign/test_bipartition.internal_betabinom_EBapprox.annotated.txt",
                TSSTTS   = "bipartition.test.fulldesign/test_bipartition.TSSTTS_betabinom_EBapprox.annotated.txt")
+## the unstranded per-part lane is scored only when its test files are present
+grase_tab <- NULL
+HAVE_G <- all(file.exists(file.path(BASE, grase_src)))
+if (!HAVE_G) cat("  GrASE, GrASE_dpi*, GrASE_internal, GrASE_merged: unstranded test files absent, skipping\n")
+if (HAVE_G) {
 g_n <- vapply(grase_src, function(f) nrow(read.table(file.path(BASE, f), header = TRUE, sep = "\t",
               quote = "", comment.char = "", stringsAsFactors = FALSE)), integer(1))
 g <- bind_rows(lapply(grase_src, read_gr))
@@ -274,6 +279,7 @@ for (dp in c(0.1, 0.2)) {
   gk <- g[grase_ok(g, dp), ]
   grase_tab <- bind_rows(grase_tab,
     score_tool(gk[, c("gene", "sim_type", "imp")], sprintf("GrASE_dpi%.1f", dp)))
+}
 }
 ## GrASE on the STRAND-RECONSTRUCTED counts, exonic unit, no junction merge.
 ## Same bipartitions, same model, same call rule -- only the counts differ:
@@ -304,9 +310,11 @@ if (all(file.exists(file.path(BASE, str_src)))) {
 
 ## internal-only bubbles: the strict like-for-like against a junction, since
 ## MAJIQ cannot test a TSS/TTS boundary at all.
+if (HAVE_G) {
 gi <- g[g$src == "internal", ]
 grase_tab <- bind_rows(grase_tab,
   score_tool(gi[, c("gene", "sim_type", "imp")], "GrASE_internal"))
+}
 
 ## GrASE with junction-merged bipartitions, BOTH types. A side with no
 ## exclusive exonic part emits no test in the exonic pipeline; where that side
@@ -348,6 +356,8 @@ grase_calls <- function(d) {
 }
 mg_int <- read_merged(merged_src[["internal"]])
 mg_tss <- read_merged(merged_src[["TSSTTS"]])
+## the unstranded merged lane needs its internal file and the unstranded per-part TSS/TTS calls
+if (HAVE_G && !is.null(mg_int)) {
 mg <- grase_calls(bind_rows(mg_int, mg_tss))
 mg_int <- mg[mg$src == "internal", ]
 KEEP <- c("gene", "sim_type", "imp")
@@ -374,6 +384,7 @@ if (!is.null(mg_tss)) {
   ## MAJIQ cannot test a TSS/TTS boundary at all.
   grase_tab <- bind_rows(grase_tab,
     score_tool(mg_int[, KEEP], "GrASE_merged_internal"))
+}
 }
 ## same merged unit, on the STRAND-RECONSTRUCTED counts
 mstr <- c(internal = "bipartition.merged.stranded.test.EBapprox/test_bipartition.merged_betabinom_EBapprox.annotated.txt",
