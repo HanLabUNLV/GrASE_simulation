@@ -50,6 +50,14 @@ bash ln.sh
 
 The pipeline is located in the `STAR/` directory.
 
+**Primary assembly.** `scripts/05_star_align.sh` runs the same two passes in one
+driver (`~/GrASE/scripts/star_two_pass.sh`) against GENCODE's primary-assembly FASTA
+(`~/GrASE/scripts/primary_assembly.sh ref 28`), with GENCODE v28 for both indexes,
+into `STAR_align/`. The steps below used `GRCh38.p13.genome.fa`, whose alternate
+haplotypes and patches make reads from the MHC and IGH loci multimap, so every
+MAPQ filter drops them. Stage 01 reads the new BAMs with
+`STAR_BAM_FMT=STAR_align/bam/%s`.
+
 ### Step 1: Generate Genome Index (Pass 1)
 Generate the initial genome index.
 ```bash
@@ -131,6 +139,7 @@ scripts here only where the truth is known.
 | stage | driver | what it does |
 |-------|--------|--------------|
 | 00 | `00_bipartition_v28_dedupfix.sh` | enumerate bipartitions from `graphml.v28` into `bipartition.v28.dedupfix`; also writes each gene's table before the dedup (`<gene>.bipartition.all.txt`) |
+| 05 | `05_star_align.sh` | two-pass STAR alignment against the primary assembly into `STAR_align/` (see section 2); run before 01 |
 | 01 | `01_stranded_recount.sh` | re-count the DEXSeq bins with each read's strand recovered from its source transcript, into `DEXSeq/count_files_stranded` (helpers: `build_read_strand.py`, `split_bam_by_origin.py`, `split_gff_by_strand.sh`) |
 | 00 | `00_bipartition_v28_features.sh` | bipartitions read off the paths' features (`bipartition_paths_by_feature`, run from the package source), with intron edges in the comparison of paths, into `bipartition.v28.features`; same partitions as the lower-set enumeration |
 | 02 | `02_stranded_pipeline.sh` | per-part route: split into internal and terminal, split-read counts, stranded exonic counts, merge, and the merged exontest (`--count_per_part`); each output directory is first moved to `<dir>.olddedup` |

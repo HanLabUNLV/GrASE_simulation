@@ -15,6 +15,8 @@
 # never gene -- same-strand overlaps stay ambiguous as they would in reality.
 #
 # Usage: bash scripts/01_stranded_recount.sh [n_parallel]   (default 12)
+# STAR_BAM_FMT: printf pattern of the pass 2 BAM directory per group [STAR/%s/bam];
+#   STAR_align/bam/%s for 05_star_align.sh output
 set -eu
 BASE=/mnt/data1/home/mirahan/GrASE_simulation
 cd $BASE
@@ -42,7 +44,7 @@ work() {
 
   PFX=$BASE/strand_recon/bam/${G}_${S}
   [ -s "${PFX}.minus.bam" ] || $PY $BASE/scripts/split_bam_by_origin.py \
-      $BASE/STAR/$G/bam/pass2_${S}.Aligned.sortedByCoord.out.bam "$NPY" "$PFX" >> "$L" 2>&1
+      $BASE/$(printf "${STAR_BAM_FMT:-STAR/%s/bam}" "$G")/pass2_${S}.Aligned.sortedByCoord.out.bam "$NPY" "$PFX" >> "$L" 2>&1
 
   for STR in plus minus; do
     $PY $DC --format bam --order pos --paired yes --stranded no \
@@ -53,7 +55,7 @@ work() {
       | sort -k1,1 > "$OUT"
   echo "done $G/$S -> $OUT ($(wc -l < "$OUT") bins)" >> "$L"
 }
-export -f work
+export -f work; export STAR_BAM_FMT
 
 for G in group1 group2; do
   SN=$([ "$G" = group1 ] && echo sample_01 || echo sample_02)
