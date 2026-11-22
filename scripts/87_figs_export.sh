@@ -38,7 +38,8 @@ for f in plots/pr_three_levels.GT_rule*.pdf \
          plots/pr_models.GT_rule.*.pdf plots/delta_sweep.GT_rule.*.pdf \
          plots/roc_partial.GT_rule.*.pdf \
          plots/pr_dte_dtu.*.pdf plots/pr_all.*.pdf plots/roc_dte_dtu.*.pdf \
-         plots/cross/01_pr_curves*.pdf plots/cross/06_confusion_counts_padj0.01.pdf; do
+         plots/cross/01_pr_curves*.pdf plots/cross/06_confusion_counts_padj0.01.pdf \
+         plots/dte_fp_example_*.pdf; do
   [ -f "$f" ] && export_one "$f"
 done
 
