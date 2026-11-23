@@ -1,33 +1,19 @@
 #!/bin/bash
-# GrASE pipeline on the strand-reconstructed DEXSeq counts: filter, split-read
-# counts, exonic counts, merge, merged tests.
+# Per-part, exon-only route of the GrASE pipeline: the bipartition arm of the
+# comparison of structures (bipartition, n_choose_2, multinomial). n_choose_2 and
+# multinomial see exonic parts only, so this arm does too:
+#   - partitions from bipartition.v28.dedupfix, enumerated with exonic parts only
+#     (no intron edges in the comparison of paths, 00_bipartition_v28_dedupfix.sh);
+#   - counts from the stranded DEXSeq bins (DEXSeq/count_files_stranded,
+#     01_stranded_recount.sh), one count per part;
+#   - no junction counts and no junction substitution: a side with no exonic
+#     distinct part is not tested.
+# The main results use the read-signature route (04_signature_pipeline.sh) instead.
 #
-# The existing counts were made with dexseq_count --stranded reverse on an
-# UNSTRANDED library, which discarded ~half of every bin at random and let
-# antisense neighbours' reads into a gene's bins. DEXSeq/count_files_stranded/
-# fixes both (see scripts/01_stranded_recount.sh).
-#
-# Each output directory is moved to <dir>.olddedup the first time this runs
-# (the bipartitions were regenerated with the corrected dedup), and a rerun
-# never touches that backup. Every stage therefore starts from an empty
-# directory: bipartition_sjcnt.R skips genes whose output exists and
-# merge_exon_sj_counts.R does not clear its output, so stale per-gene files
-# would otherwise survive.
-#
-# phi MUST be re-estimated: exontest.R skips estimation when a phi file already
-# exists in --outdir. Fresh outdirs, nothing pre-seeded.
-#
-# Only the MERGED tests are run. merge_exon_sj_counts.R substitutes a junction
-# count only on a side whose exonic distinct set is empty and leaves every other
-# side byte-identical, so the merged test subsumes the exon-only test. The
-# exonic counts are still built -- they are the merge input and the reference
-# side is never substituted.
-#
-# Directory names are the ones the evaluation scripts read; the files inside
-# carry the package's current names (<gene>.bipartition.{ex,exsj}.<class>.cnt.txt,
-# test_bipartition.exsj.<class>_*). The evaluation scripts read the merged
-# results as test_bipartition.merged_*, so each result is also linked under
-# that name.
+# Every output directory ends in .perpart, so nothing of the signature route is
+# touched. An existing output directory stops the run, so stale per-gene files
+# cannot survive and phi is always estimated fresh (exontest.R skips estimation
+# when a phi file is already in --outdir).
 #
 # Usage: bash scripts/02_stranded_pipeline.sh
 set -eu
@@ -36,69 +22,39 @@ cd $BASE
 R=$HOME/GrASE/Rpkg/scripts
 CNT=$BASE/DEXSeq/count_files_stranded
 BIPART=bipartition.v28.dedupfix
+SPLIT=bipartition.filtered.perpart
+GFF=$BASE/dexseq.gff
 
-backup () { for d in "$@"; do [ -e $d.olddedup ] || { [ ! -e $d ] || mv $d $d.olddedup; }; done; }
+fresh () { for d in "$@"; do [ ! -e $d ] || { echo "$d exists; move it aside first" >&2; exit 1; }; done; }
 cdir () { [ $1 = internal ] && echo $2 || echo $3; }   # class internal-name terminal-name
 
-echo "=== 0. split bipartitions into internal and terminal ==="
-backup bipartition.filtered
-Rscript $R/filterTerminal.R --split_dir=$BIPART --outdir=bipartition.filtered --split_type=bipartition
+[ -d $BIPART ] || { echo "missing $BIPART (00_bipartition_v28_dedupfix.sh)" >&2; exit 1; }
+fresh $SPLIT bipartition.internal.stranded.counts.perpart bipartition.TSSTTS.stranded.counts.perpart \
+      bipartition.internal.stranded.test.EBapprox.perpart bipartition.TSSTTS.stranded.test.EBapprox.perpart
 
-echo "=== 1. split-read counts on bipartition intronic edges ==="
-# These counts come from STAR's SJ.out.tab and are NOT affected by the strand
-# reconstruction -- STAR applied no strand filter (its only strand option here
-# is --outSAMstrandField intronMotif, which adds an XS tag and drops nothing),
-# so junctions were always at full depth.
-for T in internal terminal; do
-  OUT=$(cdir $T sjcnt sjcnt.TSSTTS)
-  backup $OUT
-  Rscript $R/bipartition_sjcnt.R --inputdir $BASE/bipartition.filtered \
-      --graphmldir $BASE/graphml.v28 --gff $BASE/ref/gencode.v28.dexseq.bygene.gff \
-      --sjdir $BASE/STAR --cond1 group1 --cond2 group2 \
-      --output $BASE/$OUT --type $T --cores 32
-done
+echo "=== 0. split bipartitions into internal and terminal  $(date '+%F %T') ==="
+Rscript $R/filterTerminal.R --split_dir=$BIPART --outdir=$SPLIT --split_type=bipartition
 
-echo "=== 2. exonic part counts ==="
+echo "=== 1. exonic part counts  $(date '+%F %T') ==="
 for T in internal terminal; do
-  OUT=$(cdir $T bipartition.internal.stranded.counts bipartition.TSSTTS.stranded.counts)
-  backup $OUT
+  OUT=$(cdir $T bipartition.internal.stranded.counts.perpart bipartition.TSSTTS.stranded.counts.perpart)
   Rscript $R/exoncnt.R -c "$CNT" -t bipartition --cond1=group1 --cond2=group2 \
-      -a $T -i $BASE/bipartition.filtered -o $BASE/$OUT
+      -a $T -i $BASE/$SPLIT -o $BASE/$OUT
 done
 
-echo "=== 3. merge in the exclusive junction where the exonic side is empty ==="
-backup bipartition.merged.stranded.counts bipartition.merged.TSSTTS.stranded.counts
-Rscript $R/merge_exon_sj_counts.R --exon_counts bipartition.internal.stranded.counts \
-        --sj_counts sjcnt        --output bipartition.merged.stranded.counts
-Rscript $R/merge_exon_sj_counts.R --exon_counts bipartition.TSSTTS.stranded.counts \
-        --sj_counts sjcnt.TSSTTS --output bipartition.merged.TSSTTS.stranded.counts
-
-echo "=== 4. merged tests (phi estimated fresh from these counts) ==="
-# per-gene DEXSeq GFFs and mate length: exontest.R writes per-base pi, which the
-# default call rule needs (--dpi_gate both)
-GFF=/mnt/data1/home/mirahan/GrASE_simulation/dexseq.gff
-run_test () {   # class countdir outdir phibase annotdir
-  local T=$1 CD=$2 OD=$3 PB=$4 AD=$5
-  local CF=bipartition.exsj.$T.cnt.combined.txt
-  backup "$OD"; mkdir -p "$OD"
-  # combine_exoncnt.py aligns columns by NAME: per-gene merged files do not all
-  # share one column order, and a positional concatenation corrupts the master.
-  [ -s "$CD/$CF" ] || python3 $R/combine_exoncnt.py "$CD" "$CD/$CF"
-  for f in $AD/*.bipartition.txt; do ln -sfr "$(realpath "$f")" "$CD/$(basename "$f")"; done
-  Rscript $R/exontest.R --file "$CF" --countdir "$CD" --outdir "$OD" \
+echo "=== 2. tests (phi estimated fresh from these counts)  $(date '+%F %T') ==="
+run_test () {   # class countdir outdir phibase
+  local T=$1 CD=$2 OD=$3 PB=$4
+  mkdir -p "$OD"
+  Rscript $R/exontest.R --prefix "bipartition.ex.$T" --countdir "$CD" --outdir "$OD" \
       --splittype bipartition --model betabinom_EBapprox --phi "$PB" \
       --cond1 group1 --cond2 group2 --use_phi_loess --padj_threshold=0.01 \
-      --min_reads 10 --gff_dir $GFF --read_length 100 --count_per_part
-  for f in $OD/test_bipartition.exsj.${T}_*; do
-    ln -sf "$(basename "$f")" "$OD/$(basename "$f" | sed "s/^test_bipartition\.exsj\.${T}_/test_bipartition.merged_/")"
-  done
+      --min_reads 10 --gff_dir $GFF --read_length 100 --count_per_part &> "$OD/test.log"
 }
-run_test internal bipartition.merged.stranded.counts \
-         bipartition.merged.stranded.test.EBapprox phi.merged.stranded.txt \
-         bipartition.internal.stranded.counts & P1=$!
-run_test terminal bipartition.merged.TSSTTS.stranded.counts \
-         bipartition.merged.TSSTTS.stranded.test.EBapprox phi.merged.TSSTTS.stranded.txt \
-         bipartition.TSSTTS.stranded.counts & P2=$!
+run_test internal bipartition.internal.stranded.counts.perpart \
+         bipartition.internal.stranded.test.EBapprox.perpart phi.internal.stranded.txt & P1=$!
+run_test terminal bipartition.TSSTTS.stranded.counts.perpart \
+         bipartition.TSSTTS.stranded.test.EBapprox.perpart phi.TSSTTS.stranded.txt & P2=$!
 wait $P1 || { echo "internal test FAILED" >&2; exit 1; }
 wait $P2 || { echo "terminal test FAILED" >&2; exit 1; }
-echo "=== Done ==="
+echo "=== done  $(date '+%F %T') ==="

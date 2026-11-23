@@ -19,12 +19,18 @@ set -eu
 cd /mnt/data1/home/mirahan/GrASE_simulation
 S=/mnt/data1/home/mirahan/GrASE/Rpkg/scripts
 CNT=/mnt/data1/home/mirahan/GrASE_simulation/DEXSeq/count_files_stranded
+# Internal and terminal events of each structure, from its enumeration
+# (<split>/, bubble_path_split.R --split n_choose_2 | multinomial on graphml.v28)
+for t in n_choose_2 multinomial; do
+  [ -d $t ] || { echo "missing $t (the $t enumeration)" >&2; exit 1; }
+  [ -d $t.filtered ] || Rscript $S/filterTerminal.R --split_dir=$t --outdir=$t.filtered --split_type=$t
+done
 
 for t in n_choose_2 multinomial; do
-  for a in internal TSS; do
+  for a in internal terminal; do
     tag=$([ "$a" = internal ] && echo internal || echo TSSTTS)
     out=${t}.${tag}.stranded.counts
-    if [ -s "$out/${t}.${tag}.exoncnt.combined.txt" ]; then
+    if [ -s "$out/${t}.ex.${a}.cnt.combined.txt" ]; then
       echo "=== $out already built, skipping ==="; continue
     fi
     echo "=== $t $a -> $out  $(date +%H:%M:%S) ==="
